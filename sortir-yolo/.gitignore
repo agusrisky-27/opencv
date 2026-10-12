@@ -1,0 +1,8 @@
+.env
+datasets_raw/
+dataset_gabungan/
+runs/
+outputs/
+__pycache__/
+*.pyc
+.venv/

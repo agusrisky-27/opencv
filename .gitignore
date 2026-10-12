@@ -1,0 +1,44 @@
+# Virtual Environments
+.venv/
+*/.venv/
+venv/
+env/
+
+# Datasets (Dataset berukuran ratusan MB, diunduh lewat script Roboflow)
+datasets_raw/
+*/datasets_raw/
+dataset_gabungan/
+*/dataset_gabungan/
+
+# Pretrained Weights & Large Models (Ultralytics auto-download)
+weights/
+*/weights/
+yolov8*.pt
+*/yolov8*.pt
+
+# Keep trained model best.pt (6.2 MB)
+!sortir-yolo/models/best.pt
+!models/best.pt
+
+# Output runs & screenshots
+runs/
+*/runs/
+outputs/
+*/outputs/
+
+# Security & Secrets (JANGAN upload API key Roboflow)
+.env
+*/.env
+
+# Archive & temporary files
+*.zip
+.DS_Store
+*/.DS_Store
+
+# Python Cache & Testing
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*/.pytest_cache/
