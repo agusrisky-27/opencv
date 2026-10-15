@@ -106,15 +106,16 @@ def iou_xyxy(a: BBox, b: BBox) -> float:
 class Penstabil:
     """Label tiap benda diputuskan lewat SUARA TERBANYAK beberapa frame terakhir (anti flicker).
     
-    Benda dilacak antar-frame lewat tumpang-tindih kotak (IoU).
+    Benda dilacak antar-frame lewat kombinasi IoU kotak dan jarak titik tengah (responsif gerak cepat).
     """
 
-    def __init__(self, jendela: int = 7, iou_min: float = 0.25, umur_maks: int = 6) -> None:
-        from collections import deque
+    def __init__(self, jendela: int = 3, iou_min: float = 0.15, max_dist_px: float = 120.0, umur_maks: int = 3) -> None:
         self.jendela = jendela
         self.iou_min = iou_min
+        self.max_dist_px = max_dist_px
         self.umur_maks = umur_maks
         self._tracks: list[dict] = []
+        self._next_id = 1
 
     def update(self, dets: list) -> list:
         from collections import defaultdict, deque
@@ -122,36 +123,56 @@ class Penstabil:
 
         for t in self._tracks:
             t["umur"] += 1
-        pairs = sorted(
-            ((iou_xyxy(d.bbox, t["bbox"]), i, j)
-             for i, d in enumerate(dets) for j, t in enumerate(self._tracks)),
-            reverse=True,
-        )
+
+        pairs = []
+        for i, d in enumerate(dets):
+            d_center = getattr(d, "center", compute_center(d.bbox))
+            for j, t in enumerate(self._tracks):
+                if getattr(d, "track_id", None) is not None and t.get("track_id") == d.track_id:
+                    pairs.append((10.0, i, j))
+                    continue
+                iou = iou_xyxy(d.bbox, t["bbox"])
+                t_center = compute_center(t["bbox"])
+                dist = ((d_center[0] - t_center[0]) ** 2 + (d_center[1] - t_center[1]) ** 2) ** 0.5
+                if iou >= self.iou_min:
+                    pairs.append((iou + 1.0, i, j))
+                elif dist <= self.max_dist_px:
+                    pairs.append((max(0.1, (self.max_dist_px - dist) / self.max_dist_px), i, j))
+
+        pairs.sort(reverse=True, key=lambda x: x[0])
         match: dict[int, int] = {}
         used_t: set[int] = set()
         for v, i, j in pairs:
-            if v < self.iou_min:
-                break
             if i in match or j in used_t:
                 continue
             match[i] = j
             used_t.add(j)
+
         out: list = []
         for i, d in enumerate(dets):
             if i in match:
                 t = self._tracks[match[i]]
             else:
-                t = {"votes": deque(maxlen=self.jendela)}
+                tid = getattr(d, "track_id", None) or self._next_id
+                self._next_id += 1
+                t = {"votes": deque(maxlen=self.jendela), "track_id": tid, "hits": 0}
                 self._tracks.append(t)
             t["bbox"], t["umur"] = d.bbox, 0
+            t["hits"] = t.get("hits", 0) + 1
             t["votes"].append((d.class_id, d.class_name, d.confidence))
+
+            tid = getattr(d, "track_id", None) or t.get("track_id")
+
             # Putuskan suara terbanyak
             votes = t["votes"]
             skor: dict[tuple[int, str], float] = defaultdict(float)
             for cid, cname, conf in votes:
                 skor[(cid, cname)] += conf
             (best_cid, best_cname), _ = max(skor.items(), key=lambda kv: kv[1])
+
             if best_cid == d.class_id:
+                if hasattr(d, "track_id") and d.track_id != tid:
+                    d = replace(d, track_id=tid)
                 out.append(d)
             else:
                 conf_avg = float(np.mean([c for i, _, c in votes if i == best_cid]))
@@ -163,8 +184,23 @@ class Penstabil:
                         label=display_label(best_cname),
                         confidence=conf_avg,
                         catatan="suara terbanyak",
+                        track_id=tid,
                     )
                 )
+
+        # Anti-flicker: tahan 1 frame jika benda stabil sempat hilang sesaat saat digeser cepat
+        for t in self._tracks:
+            if t["umur"] == 1 and t.get("hits", 0) >= 3 and "last_d" in t:
+                out.append(t["last_d"])
+
+        for d in out:
+            tid = getattr(d, "track_id", None)
+            if tid:
+                for t in self._tracks:
+                    if t.get("track_id") == tid:
+                        t["last_d"] = d
+                        break
+
         self._tracks = [t for t in self._tracks if t["umur"] <= self.umur_maks]
         return out
 
@@ -186,7 +222,9 @@ def draw_detection(
     x1, y1, x2, y2 = det.bbox
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
 
-    title = f"{det.label}" + (f" {int(round(det.confidence * 100))}%" if show_persen else "")
+    tid = getattr(det, "track_id", None)
+    prefix = f"#{tid} " if tid is not None else ""
+    title = f"{prefix}{det.label}" + (f" {int(round(det.confidence * 100))}%" if show_persen else "")
     catatan = getattr(det, "catatan", "")
     if catatan:
         title += f" [{catatan}]"
@@ -213,6 +251,8 @@ def draw_overlay(
     conf: float | None = None,
     filter_active: bool | None = None,
     roi_active: bool | None = None,
+    track_active: bool | None = None,
+    mqtt_active: bool | None = None,
 ) -> None:
     """FPS dan status sistem di pojok kiri atas, bantuan tombol di pojok bawah."""
     status_parts = [f"FPS: {fps:.1f}", f"Objek: {count}"]
@@ -220,13 +260,17 @@ def draw_overlay(
         status_parts.append(f"Conf: {conf:.2f}")
     if filter_active is not None:
         status_parts.append(f"Filter: {'ON' if filter_active else 'OFF'}")
+    if track_active is not None:
+        status_parts.append(f"Track: {'ON' if track_active else 'OFF'}")
+    if mqtt_active is not None:
+        status_parts.append(f"MQTT: {'ON' if mqtt_active else 'OFF'}")
     if roi_active is not None:
         status_parts.append(f"ROI: {'ON' if roi_active else 'OFF'}")
 
     _text_with_outline(frame, " | ".join(status_parts), (10, 25), 0.65)
     _text_with_outline(
         frame,
-        "q: keluar | s: screenshot | c: csv | f: filter | r: ROI | +/-: conf",
+        "q: keluar | s: foto | t: track | m: mqtt | f: filter | r: ROI | +/-: conf",
         (10, frame.shape[0] - 10),
         0.5,
     )

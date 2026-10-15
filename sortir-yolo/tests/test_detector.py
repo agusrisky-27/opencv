@@ -108,3 +108,43 @@ def test_filter_roi():
     assert len(dets) == 1
     assert dets[0].bbox == (150, 150, 250, 250)
 
+
+def test_verifikasi_koin_asli_tolak_kunci_dan_plastik():
+    from pathlib import Path
+    import cv2
+    from src.detector import verifikasi_koin_asli
+    img_path = Path("hasil pengujian.png")
+    if not img_path.is_file():
+        img_path = Path("../hasil pengujian.png")
+    if img_path.is_file():
+        img = cv2.imread(str(img_path))
+        # Koin 1000 asli harus lolos
+        assert verifikasi_koin_asli(img, (1370, 84, 1370+362, 84+332)) is True
+        # Kunci harus ditolak
+        assert verifikasi_koin_asli(img, (526, 556, 526+350, 556+396)) is False
+        # Plastik abu polos harus ditolak
+        assert verifikasi_koin_asli(img, (794, 63, 794+442, 63+349)) is False
+
+
+def test_verifikasi_tutup_botol_asli_tolak_wajah():
+    from src.detector import verifikasi_tutup_botol_asli
+    # Simulasi frame ukuran 1280x720
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+    # 1. Benda wajah manusia (warna kulit sawo matang / tan, ukuran besar 150x150)
+    # BGR untuk warna kulit: (110, 150, 195)
+    frame[100:250, 100:250] = (110, 150, 195)
+    assert verifikasi_tutup_botol_asli(frame, (100, 100, 250, 250), 1280, 720) is False
+
+    # 2. Tutup botol asli berwarna biru plastik pekat (ukuran 60x60)
+    # BGR untuk biru pekat: (220, 120, 20)
+    frame[300:360, 300:360] = (220, 120, 20)
+    assert verifikasi_tutup_botol_asli(frame, (300, 300, 360, 360), 1280, 720) is True
+
+    # 3. Tutup botol asli berwarna merah plastik pekat (ukuran 60x60)
+    # BGR untuk merah pekat: (20, 30, 230)
+    frame[400:460, 400:460] = (20, 30, 230)
+    assert verifikasi_tutup_botol_asli(frame, (400, 400, 460, 460), 1280, 720) is True
+
+
+

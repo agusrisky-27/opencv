@@ -7,7 +7,7 @@ conveyor), pencahayaan yang sama.
 
     python extra_capture_data.py --source 0
 
-Tombol:  1 = koin | 2 = korek_api | 3 = tutup_botol   (pilih kelas yang sedang difoto)
+Tombol:  1 = koin | 2 = tutup_botol | 0 = latar kosong / negatif
          SPASI = ambil 1 foto | a = ambil otomatis tiap 0.4 detik (on/off) | q = selesai
 Tips: 1 benda per foto, letakkan di latar polos, ubah posisi/putaran/jarak/cahaya di antara
 foto. Target minimal 100-200 foto per kelas. Lalu jalankan extra_autolabel_own.py.

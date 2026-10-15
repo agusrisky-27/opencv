@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Langkah 5 - Deteksi real-time lewat webcam (atau gambar / video).
 
-Benda yang terdeteksi diberi KOTAK MERAH + judul (Koin / Korek Api / Tutup Botol)
+Benda yang terdeteksi diberi KOTAK MERAH (atau warna per-kelas) + judul (Koin / Tutup Botol)
 dan titik tengahnya (cx, cy) dihitung & ditampilkan otomatis.
 
     python 05_detect.py                              # webcam 0, model models/best.pt
     python 05_detect.py --source 1 --conf 0.4        # kamera lain / threshold lain
+    python 05_detect.py --warna-kelas                # bedakan warna kotak koin vs tutup botol
     python 05_detect.py --source foto.jpg            # satu gambar
     python 05_detect.py --source video.mp4
 
-Tombol: q / ESC = keluar | s = simpan screenshot | c = simpan koordinat ke CSV
+Tombol: q / ESC = keluar | s = simpan screenshot | c = simpan koordinat ke CSV | w = warna per-kelas
 """
 from __future__ import annotations
 
@@ -19,10 +20,12 @@ import time
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from src.camera import Camera, CameraError, parse_source
-from src.config import DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
+from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
 from src.detector import Detection, Detector
+from src.mqtt_client import MqttSender
 from src.utils import (
     Penstabil,
     append_csv,
@@ -62,23 +65,37 @@ def annotate(
     roi: tuple[int, int, int, int] | None = None,
     roi_active: bool = False,
     show_persen: bool = True,
+    warna_kelas: bool = False,
+    track_active: bool = False,
+    mqtt_active: bool = False,
 ) -> None:
     if roi_active and roi is not None:
         draw_roi(frame, roi, active=True)
     for det in detections:
-        draw_detection(frame, det, show_persen=show_persen)
-    draw_overlay(frame, fps, len(detections), conf=conf, filter_active=filter_active, roi_active=roi_active)
+        color = CLASS_COLORS.get(det.class_name, BOX_COLOR) if warna_kelas else BOX_COLOR
+        draw_detection(frame, det, color=color, show_persen=show_persen)
+    draw_overlay(
+        frame,
+        fps,
+        len(detections),
+        conf=conf,
+        filter_active=filter_active,
+        roi_active=roi_active,
+        track_active=track_active,
+        mqtt_active=mqtt_active,
+    )
 
 
 def print_detections(detections: list[Detection]) -> None:
     stamp = time.strftime("%H:%M:%S")
     for d in detections:
+        tid = f"#{d.track_id} " if getattr(d, "track_id", None) is not None else ""
         cat = f" [{d.catatan}]" if getattr(d, "catatan", "") else ""
-        print(f"[{stamp}] {d.label}{cat} | conf={d.confidence:.2f} | center={d.center} | "
+        print(f"[{stamp}] {tid}{d.label}{cat} | conf={d.confidence:.2f} | center={d.center} | "
               f"center_norm={d.center_norm} | bbox={d.bbox}")
 
 
-def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = True) -> int:
+def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = True, warna_kelas: bool = False) -> int:
     frame = cv2.imread(str(path))
     if frame is None:
         print(f"Tidak bisa membaca gambar: {path}")
@@ -96,6 +113,7 @@ def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = Tr
         roi=detector.roi,
         roi_active=detector.roi is not None,
         show_persen=show_persen,
+        warna_kelas=warna_kelas,
     )
     out = OUTPUT_DIR / f"hasil_{path.stem}.jpg"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -110,24 +128,38 @@ def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = Tr
 
 def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) -> int:
     try:
-        cam = Camera(source, args.width, args.height).open()
+        cam = Camera(source, args.width, args.height).open(auto_fallback=True)
     except CameraError as exc:
         print(exc)
         return 1
 
     smart_filter_on = not args.no_smart_filter
+    warna_kelas_on = bool(args.warna_kelas)
     roi_coords = parse_roi_arg(args.roi, args.width, args.height)
     roi_active = roi_coords is not None
     current_conf = detector.conf
     penstabil = Penstabil() if not args.tanpa_stabil else None
+
+    mqtt_sender = MqttSender(
+        broker=args.mqtt_broker,
+        port=args.mqtt_port,
+        username=args.mqtt_user,
+        password=args.mqtt_pass,
+        topic=args.mqtt_topic,
+        enabled=not args.no_mqtt,
+        cooldown=args.mqtt_cooldown,
+    )
 
     prev, fps, last_print = time.time(), 0.0, 0.0
     print("\nKontrol Keyboard:")
     print("  [q] / [ESC] : Keluar")
     print("  [s]         : Simpan tangkapan layar (screenshot)")
     print("  [c]         : Simpan koordinat objek ke CSV")
+    print("  [t]         : Toggle Object Tracking (ON/OFF)")
+    print("  [m]         : Toggle MQTT IoT Sender (ON/OFF)")
     print("  [f]         : Toggle Smart Filter (ON/OFF)")
     print("  [r]         : Toggle ROI Zona Kerja (ON/OFF)")
+    print("  [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)")
     print("  [+] / [-]   : Naikkan / turunkan confidence threshold\n")
 
     try:
@@ -150,6 +182,11 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if penstabil is not None:
                 detections = penstabil.update(detections)
 
+            # Kirim sinyal MQTT ke ESP32 secara real-time
+            if detections and mqtt_sender.enabled:
+                for d in detections:
+                    mqtt_sender.send_detection(d.class_name, d.confidence, d.track_id)
+
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
             prev = now
@@ -167,6 +204,9 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 roi=roi_coords,
                 roi_active=roi_active,
                 show_persen=not args.tanpa_persen,
+                warna_kelas=warna_kelas_on,
+                track_active=detector.track,
+                mqtt_active=mqtt_sender.enabled,
             )
             cv2.imshow(WINDOW, frame)
 
@@ -178,12 +218,21 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if key == ord("c"):
                 n = append_csv(detections, OUTPUT_DIR / "koordinat.csv")
                 print(f"{n} koordinat disimpan ke {OUTPUT_DIR / 'koordinat.csv'}")
+            if key in (ord("t"), ord("T")):
+                detector.track = not detector.track
+                print(f"[Object Tracking] -> {'ON' if detector.track else 'OFF'}")
+            if key in (ord("m"), ord("M")):
+                mqtt_sender.enabled = not mqtt_sender.enabled
+                print(f"[MQTT IoT] -> {'ON (Aktif)' if mqtt_sender.enabled else 'OFF (Mati)'}")
             if key in (ord("f"), ord("F")):
                 smart_filter_on = not smart_filter_on
                 print(f"[Smart Filter] -> {'ON' if smart_filter_on else 'OFF'}")
             if key in (ord("r"), ord("R")):
                 roi_active = not roi_active
                 print(f"[ROI Conveyor] -> {'ON' if roi_active else 'OFF'}")
+            if key in (ord("w"), ord("W")):
+                warna_kelas_on = not warna_kelas_on
+                print(f"[Warna per Kelas] -> {'ON' if warna_kelas_on else 'OFF (Merah semua)'}")
             if key in (ord("+"), ord("=")):
                 current_conf = min(0.95, round(current_conf + 0.05, 2))
                 print(f"[Confidence] -> {current_conf:.2f}")
@@ -192,6 +241,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 print(f"[Confidence] -> {current_conf:.2f}")
     finally:
         cam.release()
+        mqtt_sender.close()
         cv2.destroyAllWindows()
     return 0
 
@@ -200,7 +250,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     ap.add_argument("--source", default="0", help="nomor kamera (0,1,..) atau path gambar/video")
-    ap.add_argument("--conf", type=float, default=0.65, help="threshold confidence (default: 0.65)")
+    ap.add_argument("--conf", type=float, default=0.40, help="threshold confidence (default: 0.40)")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--width", type=int, default=1280, help="lebar kamera yang diminta")
@@ -209,13 +259,22 @@ def main() -> int:
     ap.add_argument("--print-every", type=float, default=0.5, help="jeda (detik) cetak koordinat di terminal")
     ap.add_argument("--no-show", action="store_true", help="jangan buka jendela (khusus untuk gambar)")
     ap.add_argument("--no-smart-filter", action="store_true", help="matikan filter geometri cerdas")
+    ap.add_argument("--no-track", action="store_true", help="matikan object tracking real-time (ByteTrack)")
+    ap.add_argument("--no-mqtt", action="store_true", help="matikan pengiriman MQTT ke ESP32")
+    ap.add_argument("--mqtt-broker", default="p8f1fa01.ala.asia-southeast1.emqxsl.com", help="alamat broker MQTT (default: p8f1fa01.ala.asia-southeast1.emqxsl.com)")
+    ap.add_argument("--mqtt-port", type=int, default=8883, help="port MQTT (default: 8883)")
+    ap.add_argument("--mqtt-user", default="admin_pabrik", help="username MQTT (default: admin_pabrik)")
+    ap.add_argument("--mqtt-pass", default="rahasia123", help="password MQTT (default: rahasia123)")
+    ap.add_argument("--mqtt-topic", default="sortir/koin/agusrisky", help="topik MQTT (default: sortir/koin/agusrisky)")
+    ap.add_argument("--mqtt-cooldown", type=float, default=2.0, help="jeda waktu pengiriman MQTT per objek (detik)")
     ap.add_argument("--tanpa-stabil", action="store_true", help="matikan penstabil suara-terbanyak multi-frame")
     ap.add_argument("--tanpa-persen", action="store_true", help="jangan tampilkan persentase confidence di label")
+    ap.add_argument("--warna-kelas", action="store_true", help="bedakan warna kotak tiap kelas (koin=emas, tutup_botol=cyan)")
     ap.add_argument("--roi", default=None, help="area aktif 'x1,y1,x2,y2' atau 'auto' (di luar area ini diabaikan)")
-    ap.add_argument("--min-ar", type=float, default=0.65, help="aspek rasio w/h minimum (default: 0.65)")
-    ap.add_argument("--max-ar", type=float, default=1.50, help="aspek rasio w/h maksimum (default: 1.50)")
-    ap.add_argument("--max-area", type=float, default=0.22, help="fraksi luas maksimal terhadap frame (default: 0.22)")
-    ap.add_argument("--min-size", type=int, default=20, help="ukuran lebar/tinggi minimum piksel (default: 20)")
+    ap.add_argument("--min-ar", type=float, default=0.50, help="aspek rasio w/h minimum (default: 0.50)")
+    ap.add_argument("--max-ar", type=float, default=1.85, help="aspek rasio w/h maksimum (default: 1.85)")
+    ap.add_argument("--max-area", type=float, default=0.40, help="fraksi luas maksimal terhadap frame (default: 0.40)")
+    ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
     args = ap.parse_args()
 
     try:
@@ -225,6 +284,7 @@ def main() -> int:
             imgsz=args.imgsz,
             device=args.device,
             smart_filter=not args.no_smart_filter,
+            track=not args.no_track,
             min_ar=args.min_ar,
             max_ar=args.max_ar,
             max_area_frac=args.max_area,
@@ -234,11 +294,12 @@ def main() -> int:
         print(exc)
         return 1
     print(f"Model: {args.weights} | device: {detector.device} | conf: {args.conf} | "
-          f"smart_filter: {'ON' if detector.smart_filter else 'OFF'}")
+          f"filter: {'ON' if detector.smart_filter else 'OFF'} | track: {'ON' if detector.track else 'OFF'} | "
+          f"mqtt: {'ON' if not args.no_mqtt else 'OFF'}")
 
     source = parse_source(args.source)
     if isinstance(source, str) and Path(source).suffix.lower() in IMAGE_EXTS:
-        return run_image(detector, Path(source), show=not args.no_show, show_persen=not args.tanpa_persen)
+        return run_image(detector, Path(source), show=not args.no_show, show_persen=not args.tanpa_persen, warna_kelas=args.warna_kelas)
     return run_stream(detector, source, args)
 
 

@@ -24,7 +24,7 @@ import yaml
 from src.autolabel import WorldLabeler, box_from_background, draw_preview, save_preview_grid, write_yolo_label
 from src.config import CLASS_NAMES, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR
 
-PROMPTS = {"koin": "coin", "korek_api": "lighter", "tutup_botol": "bottle cap"}
+PROMPTS = {"koin": "coin", "tutup_botol": "bottle cap"}
 
 
 def main() -> int:

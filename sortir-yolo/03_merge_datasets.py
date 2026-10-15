@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Langkah 3 - Gabungkan semua dataset menjadi satu dataset 3 kelas.
+"""Langkah 3 - Gabungkan semua dataset menjadi satu dataset final.
 
     python 03_merge_datasets.py
 
 Yang dilakukan:
-  - semua kelas asli di tiap dataset dipetakan ke kelas final: koin / korek_api / tutup_botol
+  - semua kelas asli di tiap dataset dipetakan ke kelas final: koin / tutup_botol
   - gambar hasil augmentasi dari foto asli yang sama TIDAK dibiarkan ada di train sekaligus valid/test
   - menulis dataset_gabungan/data.yaml dan mencetak laporan jumlah data per kelas
 """

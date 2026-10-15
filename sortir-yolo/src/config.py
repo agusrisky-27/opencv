@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Folder kerja
 RAW_DIR = ROOT / "datasets_raw"          # hasil unduhan Roboflow (mentah)
-MERGED_DIR = ROOT / "dataset_gabungan"   # dataset final 3 kelas untuk training
+MERGED_DIR = ROOT / "dataset_gabungan"   # dataset final untuk training
 MODELS_DIR = ROOT / "models"             # tempat best.pt untuk dipakai deteksi
 OUTPUT_DIR = ROOT / "outputs"            # screenshot, csv, preview
 RUNS_DIR = ROOT / "runs"                 # hasil training Ultralytics
@@ -29,8 +29,14 @@ DISPLAY_LABELS: dict[str, str] = {
     "tutup_botol": "Tutup Botol",
 }
 
-# Warna kotak (BGR). Merah sesuai permintaan.
+# Warna kotak default (BGR). Merah sesuai standar proyek.
 BOX_COLOR = (0, 0, 255)
+
+# Palet warna opsional per kelas (BGR) jika ingin membedakan warna visual tiap benda
+CLASS_COLORS: dict[str, tuple[int, int, int]] = {
+    "koin": (0, 215, 255),         # Emas / Kuning (BGR)
+    "tutup_botol": (255, 140, 0),  # Biru / Cyan (BGR)
+}
 
 # Sumber dataset Roboflow Universe.
 #   kind = "detection"       -> sudah punya kotak, diunduh format yolov8

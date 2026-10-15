@@ -23,9 +23,29 @@ class Camera:
         self.height = height
         self.cap: cv2.VideoCapture | None = None
 
-    def open(self) -> "Camera":
+    @staticmethod
+    def find_available_cameras(max_index: int = 4) -> list[int]:
+        """Cari nomor kamera yang aktif / dapat dibuka."""
+        available = []
+        for idx in range(max_index):
+            test_cap = cv2.VideoCapture(idx)
+            if test_cap.isOpened():
+                available.append(idx)
+                test_cap.release()
+        return available
+
+    def open(self, auto_fallback: bool = False) -> "Camera":
         self.cap = cv2.VideoCapture(self.source)
-        if not self.cap.isOpened():
+        if not self.cap.isOpened() and auto_fallback and isinstance(self.source, int):
+            # Coba kamera lain yang tersedia
+            candidates = self.find_available_cameras()
+            for cand in candidates:
+                if cand != self.source:
+                    self.cap = cv2.VideoCapture(cand)
+                    if self.cap.isOpened():
+                        self.source = cand
+                        break
+        if not self.cap or not self.cap.isOpened():
             self.release()
             raise CameraError(
                 f"Tidak bisa membuka sumber video: {self.source!r}\n"
@@ -38,6 +58,16 @@ class Camera:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         if self.height:
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+
+        # Warmup kamera (sangat berguna untuk iPhone Continuity Camera agar sensor aktif)
+        if isinstance(self.source, int):
+            import time
+            for _ in range(15):
+                ok, _ = self.cap.read()
+                if ok:
+                    break
+                time.sleep(0.15)
+
         return self
 
     def read(self) -> tuple[bool, np.ndarray | None]:

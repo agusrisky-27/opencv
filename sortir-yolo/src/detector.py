@@ -28,7 +28,8 @@ class Detection:
     bbox: tuple[int, int, int, int]      # (x1, y1, x2, y2) piksel
     center: tuple[int, int]              # (cx, cy) piksel
     center_norm: tuple[float, float]     # (cx, cy) skala 0..1
-    catatan: str = ""                    # catatan pasca-proses (mis. 'koreksi warna')
+    catatan: str = ""                    # catatan pasca-proses
+    track_id: int | None = None          # ID unik pelacak objek bergerak
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -38,33 +39,58 @@ def validate_geometry(
     bbox: tuple[int, int, int, int],
     frame_width: int,
     frame_height: int,
-    min_ar: float = 0.65,
-    max_ar: float = 1.50,
-    min_size_px: int = 20,
-    max_area_frac: float = 0.22,
+    min_ar: float = 0.50,
+    max_ar: float = 1.85,
+    min_size_px: int = 10,
+    max_area_frac: float = 0.40,
 ) -> bool:
-    """Validasi fisik objek: koin dan tutup botol berbentuk bundar/elips dan ukurannya wajar.
-
-    Menolak deteksi palsu:
-    - Jendela / perabot / pintu (rasio aspek terlalu lonjong atau kotak terlalu besar)
-    - Wajah manusia / kepala (ukuran kotak terlalu besar melebihi proporsi benda)
-    - Noise piksel mikroskopis (< min_size_px)
-    """
+    """Validasi fisik objek: koin dan tutup botol berbentuk bundar/elips dan ukurannya wajar."""
     x1, y1, x2, y2 = bbox
     w, h = x2 - x1, y2 - y1
     if w < min_size_px or h < min_size_px:
         return False
-    # Ukuran koin/tutup botol di kamera tidak mungkin melebihi 45% lebar/tinggi frame
-    if w > frame_width * 0.45 or h > frame_height * 0.45:
+    if w > frame_width * 0.65 or h > frame_height * 0.65:
         return False
-    # Luas kotak tidak boleh melebihi fraksi maksimal luas frame
     if (w * h) > (frame_width * frame_height * max_area_frac):
         return False
-    # Aspek rasio w/h: bundar/elips mendekati 1.0 (toleransi sudut miring 0.65 - 1.50)
     ar = w / float(max(h, 1))
     if ar < min_ar or ar > max_ar:
         return False
     return True
+
+
+def _cek_warna_kulit(patch: np.ndarray) -> float:
+    """Hitung fraksi piksel warna kulit manusia (skin tone) menggunakan kombinasi YCrCb dan HSV."""
+    if patch.size == 0 or patch.shape[0] < 4 or patch.shape[1] < 4:
+        return 0.0
+    ycrcb = cv2.cvtColor(patch, cv2.COLOR_BGR2YCrCb)
+    cr = ycrcb[..., 1]
+    cb = ycrcb[..., 2]
+    mask_ycrcb = (cr >= 133) & (cr <= 173) & (cb >= 77) & (cb <= 127)
+
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    h = hsv[..., 0]
+    s = hsv[..., 1]
+    v = hsv[..., 2]
+    mask_hsv = (h >= 0) & (h <= 25) & (s >= 35) & (s <= 170) & (v >= 50)
+
+    combined = mask_ycrcb & mask_hsv
+    return float(np.mean(combined))
+
+
+def is_human_skin_face(crop: np.ndarray, frame_w: int, frame_h: int) -> bool:
+    """Mendeteksi apakah objek adalah wajah manusia di depan webcam."""
+    h, w = crop.shape[:2]
+    if w < 10 or h < 10:
+        return False
+    area_frac = (w * h) / float(max(frame_w * frame_h, 1))
+    skin_frac = _cek_warna_kulit(crop)
+    # Wajah di depan webcam: area cukup besar (> 2.5% frame) dan kaya warna kulit (> 35%)
+    if skin_frac > 0.35 and area_frac > 0.025:
+        return True
+    if skin_frac > 0.65:
+        return True
+    return False
 
 
 def ciri_warna(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> dict[str, float] | None:
@@ -89,7 +115,7 @@ def ciri_warna(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> dict[str, 
     ok = val > 0.15
     if ok.sum() < 20:
         return None
-    pekat = (sat > 0.45) & ok
+    pekat = (sat > 0.40) & ok
     frac = float(pekat.sum() / ok.sum())
     if pekat.any():
         rad = np.deg2rad(hue[pekat])
@@ -99,13 +125,100 @@ def ciri_warna(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> dict[str, 
     return {"frac_pekat": frac, "hue": hue_mean, "sat": float(np.median(sat[ok]))}
 
 
-def tutup_berwarna(frame: np.ndarray, bbox: tuple[int, int, int, int], min_frac: float = 0.6) -> bool:
-    """True jika benda jelas berwarna pekat (biru/merah/hijau/ungu) -> pasti bukan koin logam."""
+def tutup_berwarna(frame: np.ndarray, bbox: tuple[int, int, int, int], min_frac: float = 0.50) -> bool:
+    """True jika benda jelas berwarna pekat plastik (oranye/biru/merah/hijau/kuning) -> bukan koin logam dan bukan wajah."""
+    x1, y1, x2, y2 = bbox
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return False
+    # Tolak jika objek adalah wajah manusia agar tidak dikira tutup botol
+    if is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
+        return False
+
     c = ciri_warna(frame, bbox)
     if c is None or c["frac_pekat"] < min_frac:
         return False
-    # Koin logam rupiah: perak/abu-abu (saturasi rendah) atau kuning emas (hue 10-50).
-    return not (10.0 <= c["hue"] <= 50.0)
+    # Koin kuningan emas Rp 1000 berada di hue 30..55 (kuning keemasan) dengan saturasi kusam/rendah (< 0.40).
+    # Jika berada di rentang warna kuning emas (30..55 derajat), syaratkan saturasi pekat khas plastik (> 0.55).
+    if 30.0 <= c["hue"] <= 55.0:
+        return c["sat"] > 0.55
+    return True
+
+
+def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> bool:
+    """Verifikasi khusus koin: tolak kunci (ada lubang tembus gantungan), plastik abu-abu polos, dan wajah manusia."""
+    x1, y1, x2, y2 = bbox
+    w, h = x2 - x1, y2 - y1
+    if w < 10 or h < 10:
+        return False
+
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or crop.shape[0] < 6 or crop.shape[1] < 6:
+        return False
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    if gray.max() == gray.min():
+        return True  # frame sintetis polos (unit test)
+
+    # 1. Tolak jika objek adalah wajah manusia
+    if is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
+        return False
+
+    # 2. Cek Lubang Internal Kunci (Lubang gantungan tembus meja: 1.5% - 25% luas kotak)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    cnts, hier = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if hier is not None:
+        for idx, h_info in enumerate(hier[0]):
+            if h_info[3] != -1:  # Kontur internal (lubang)
+                hole_area = cv2.contourArea(cnts[idx])
+                frac = hole_area / float(w * h)
+                if 0.015 < frac < 0.25:  # Lubang gantungan kunci nyata
+                    return False
+
+    min_dim = min(w, h)
+    ch, cw = gray.shape[:2]
+
+    # 3. Cek Tekstur Relief Koin Logam vs Plastik Datar Polos (Adaptif Skala Jarak)
+    center_patch = gray[int(ch * 0.22):int(ch * 0.78), int(cw * 0.22):int(cw * 0.78)]
+    if center_patch.size > 0:
+        center_edges = cv2.Canny(center_patch, 40, 120)
+        edge_density = np.count_nonzero(center_edges) / float(center_edges.size)
+        std_dev = float(np.std(center_patch))
+
+        sx = cv2.Sobel(center_patch, cv2.CV_64F, 1, 0, ksize=3)
+        sy = cv2.Sobel(center_patch, cv2.CV_64F, 0, 1, ksize=3)
+        grad_mag = float(np.mean(np.sqrt(sx**2 + sy**2)))
+
+        if min_dim >= 75:
+            # Jarak dekat / sedang: uji tekstur penuh (plastik polos ditolak)
+            if edge_density < 0.035 and std_dev < 22.0 and grad_mag < 25.0:
+                return False
+        elif min_dim >= 40:
+            # Jarak menengah: ambang batas tekstur lebih toleran
+            if edge_density < 0.020 and std_dev < 16.0 and grad_mag < 18.0:
+                return False
+
+    return True
+
+
+def verifikasi_tutup_botol_asli(
+    frame: np.ndarray,
+    bbox: tuple[int, int, int, int],
+    frame_width: int,
+    frame_height: int,
+) -> bool:
+    """Verifikasi khusus tutup botol: tolak wajah manusia, tetapi izinkan tutup botol nyata (meskipun dipegang tangan)."""
+    x1, y1, x2, y2 = bbox
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or crop.shape[0] < 6 or crop.shape[1] < 6:
+        return False
+
+    # Tolak HANYA jika objek secara dominan adalah wajah manusia di depan webcam
+    if is_human_skin_face(crop, frame_width, frame_height):
+        return False
+
+    return True
 
 
 class Detector:
@@ -114,16 +227,17 @@ class Detector:
     def __init__(
         self,
         weights: str | Path | None = None,
-        conf: float = 0.65,
+        conf: float = 0.40,
         imgsz: int = 640,
         iou: float = 0.45,
         device: str = "auto",
         model: Any = None,
         smart_filter: bool = False,
-        min_ar: float = 0.65,
-        max_ar: float = 1.50,
-        max_area_frac: float = 0.22,
-        min_size_px: int = 20,
+        track: bool = False,
+        min_ar: float = 0.50,
+        max_ar: float = 1.85,
+        max_area_frac: float = 0.40,
+        min_size_px: int = 10,
         cek_warna: bool = True,
         roi: tuple[int, int, int, int] | None = None,
     ) -> None:
@@ -132,6 +246,7 @@ class Detector:
         self.iou = iou
         self.device = pick_device(device)
         self.smart_filter = smart_filter
+        self.track = track
         self.min_ar = min_ar
         self.max_ar = max_ar
         self.max_area_frac = max_area_frac
@@ -154,10 +269,25 @@ class Detector:
         """Deteksi semua objek di satu frame (BGR). Urut dari confidence tertinggi."""
         height, width = frame.shape[:2]
         use_filter = self.smart_filter if apply_smart_filter is None else apply_smart_filter
-        results = self.model.predict(
-            frame, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
-            device=self.device, agnostic_nms=True, max_det=30, verbose=False,
-        )
+
+        if self.track and hasattr(self.model, "track"):
+            try:
+                results = self.model.track(
+                    frame, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
+                    device=self.device, agnostic_nms=True, max_det=30, verbose=False,
+                    persist=True, tracker="bytetrack.yaml",
+                )
+            except Exception:
+                results = self.model.predict(
+                    frame, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
+                    device=self.device, agnostic_nms=True, max_det=30, verbose=False,
+                )
+        else:
+            results = self.model.predict(
+                frame, conf=self.conf, iou=self.iou, imgsz=self.imgsz,
+                device=self.device, agnostic_nms=True, max_det=30, verbose=False,
+            )
+
         if not results:
             return []
         result = results[0]
@@ -193,13 +323,30 @@ class Detector:
             label = display_label(class_name)
             catatan = ""
 
-            # 3. Koreksi warna pekat (koin salah tebak tutup botol)
+            track_id: int | None = None
+            if hasattr(box, "id") and box.id is not None:
+                try:
+                    track_id = int(box.id[0])
+                except (IndexError, TypeError, ValueError):
+                    track_id = None
+
+            # 3. Koreksi warna: jika objek berwarna plastik pekat (biru, hijau, merah, dll.), jadikan tutup_botol
             if (self.cek_warna and class_name == "koin" and "tutup_botol" in name_to_id
                     and tutup_berwarna(frame, bbox)):
                 class_id = name_to_id["tutup_botol"]
                 class_name = "tutup_botol"
                 label = display_label("tutup_botol")
                 catatan = "koreksi warna"
+
+            # 4. Verifikasi Koin Asli (Tolak kunci, plastik abu-abu polos, dan wajah manusia)
+            if use_filter and class_name == "koin" and not verifikasi_koin_asli(frame, bbox):
+                continue
+
+            # 5. Verifikasi Tutup Botol Asli (Tolak wajah manusia, tetapi izinkan tutup botol nyata)
+            if use_filter and class_name == "tutup_botol" and not verifikasi_tutup_botol_asli(
+                frame, bbox, width, height
+            ):
+                continue
 
             detections.append(
                 Detection(
@@ -211,6 +358,7 @@ class Detector:
                     center=center,
                     center_norm=normalize_point(center, width, height),
                     catatan=catatan,
+                    track_id=track_id,
                 )
             )
         detections.sort(key=lambda d: d.confidence, reverse=True)

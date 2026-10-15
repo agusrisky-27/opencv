@@ -22,23 +22,24 @@ Dirancang untuk sistem konveyor dan integrasi lengan robot vakum.
 ## Struktur Folder
 
 ```
-├── README.md
-├── Training_YOLO_Colab.ipynb          # Notebook training Google Colab
-├── sortir-yolo/
-│   ├── 01_download_datasets.py        # Unduh dataset Roboflow
-│   ├── 02_autolabel_tutup_botol.py    # Auto-label tutup botol
-│   ├── 03_merge_datasets.py           # Gabung dataset train/val
-│   ├── 04_train.py                    # Training YOLO lokal
-│   ├── 05_detect.py                   # Program deteksi real-time webcam
-│   ├── extra_capture_data.py          # Ambil foto sendiri & background negatif
-│   ├── extra_autolabel_own.py         # Auto-label foto sendiri
-│   ├── requirements.txt               # Daftar dependensi Python
-│   ├── .env.example                   # Format API key Roboflow
-│   ├── models/
-│   │   └── best.pt                    # Model hasil latih YOLOv8 (siap pakai)
-│   ├── src/                           # Modul detector, camera, utils, geometry
-│   └── tests/                         # Unit tests
-└── claude_extracted/                  # Versi single-file modular (sortir.py)
+├── README.md                          # Dokumentasi utama proyek
+├── detect.py                          # Shortcut runner untuk deteksi langsung dari root
+├── .gitignore                         # Konfigurasi file yang diabaikan Git
+└── sortir-yolo/                       # Folder kerja utama
+    ├── requirements.txt               # Daftar dependensi Python
+    ├── .env.example                   # Format API key Roboflow
+    ├── 01_download_datasets.py        # Unduh dataset Roboflow
+    ├── 02_autolabel_tutup_botol.py    # Auto-label tutup botol
+    ├── 03_merge_datasets.py           # Gabung dataset train/val
+    ├── 05_detect.py                   # Program deteksi real-time webcam
+    ├── extra_capture_data.py          # Ambil foto sendiri & background negatif
+    ├── extra_autolabel_own.py         # Auto-label foto sendiri
+    ├── colab/
+    │   └── Training_YOLO_Colab.ipynb  # Notebook training Google Colab
+    ├── models/
+    │   └── best.pt                    # Model hasil latih YOLOv8 (siap pakai)
+    ├── src/                           # Modul detector, camera, utils, config
+    └── tests/                         # Unit tests
 ```
 
 ---
@@ -58,19 +59,32 @@ pip install -r requirements.txt
 
 Model hasil latih (`models/best.pt`) sudah tersedia, sehingga bisa langsung dijalankan:
 
+**Opsi A — Dari root workspace:**
 ```bash
+python detect.py
+```
+
+**Opsi B — Dari dalam folder `sortir-yolo`:**
+```bash
+cd sortir-yolo
 python 05_detect.py
 ```
 
 Jika menggunakan kamera eksternal / USB webcam:
 ```bash
-python 05_detect.py --source 1
+python detect.py --source 1
+```
+
+Untuk membedakan warna kotak visual tiap kelas (Koin = Kuning Emas, Tutup Botol = Cyan):
+```bash
+python detect.py --warna-kelas
 ```
 
 ### 3. Kontrol Keyboard Saat Kamera Aktif
 
 - `f` : Nyalakan/Matikan **Smart Filter** (ON/OFF).
 - `r` : Nyalakan/Matikan **ROI Zona Conveyor** (ON/OFF).
+- `w` : Nyalakan/Matikan **Warna per Kelas** (Kuning=Koin, Biru=Tutup Botol / Default=Merah).
 - `+` / `-` : Naikkan / turunkan threshold confidence (default: 0.65).
 - `s` : Ambil foto tangkapan layar (tersimpan di `outputs/`).
 - `c` : Simpan koordinat objek ke file CSV (`outputs/koordinat.csv`).

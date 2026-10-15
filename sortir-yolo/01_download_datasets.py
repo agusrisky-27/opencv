@@ -4,7 +4,7 @@
 Contoh:
     python 01_download_datasets.py                  # unduh semua
     python 01_download_datasets.py --only koin      # satu dataset saja
-    python 01_download_datasets.py --zip korek_api=/path/korek.zip   # pakai zip hasil unduh manual
+    python 01_download_datasets.py --zip koin=/path/koin.zip         # pakai zip hasil unduh manual
 
 API key dibaca dari: variabel lingkungan ROBOFLOW_API_KEY, file .env, Colab Secrets,
 atau ditanya langsung kalau dijalankan di terminal.

@@ -53,3 +53,38 @@ def test_append_csv(tmp_path):
     lines = path.read_text().splitlines()
     assert lines[0].startswith("waktu,kelas")
     assert len(lines) == 4
+
+
+def test_draw_detection_custom_color():
+    frame = np.zeros((300, 400, 3), dtype=np.uint8)
+    draw_detection(frame, make_det(), color=(0, 215, 255))
+    gold = (frame[:, :, 2] == 255) & (frame[:, :, 1] == 215) & (frame[:, :, 0] == 0)
+    assert gold.sum() > 100
+
+
+def test_penstabil_gerak_cepat_konsisten_id():
+    from src.utils import Penstabil
+    p = Penstabil()
+    # Frame 1: Objek di x=100
+    f1 = p.update([make_det(bbox=(100, 100, 150, 150))])
+    assert len(f1) == 1
+    tid = f1[0].track_id
+
+    # Frame 2: Objek bergeser cepat ke x=160 (IoU kecil tapi jarak dekat)
+    f2 = p.update([make_det(bbox=(160, 100, 210, 150))])
+    assert len(f2) == 1
+    assert f2[0].track_id == tid  # ID pelacak konsisten
+
+
+def test_penstabil_anti_flicker_tahan_frame():
+    from src.utils import Penstabil
+    p = Penstabil()
+    # Deteksi 3 frame berturut-turut
+    for _ in range(3):
+        p.update([make_det(bbox=(100, 100, 150, 150))])
+
+    # Frame 4: Objek hilang sesaat (motion blur)
+    f4 = p.update([])
+    assert len(f4) == 1  # Tetap ditahan agar tidak flicker
+
+
