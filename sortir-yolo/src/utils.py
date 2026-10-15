@@ -106,14 +106,23 @@ def iou_xyxy(a: BBox, b: BBox) -> float:
 class Penstabil:
     """Label tiap benda diputuskan lewat SUARA TERBANYAK beberapa frame terakhir (anti flicker).
     
-    Benda dilacak antar-frame lewat kombinasi IoU kotak dan jarak titik tengah (responsif gerak cepat).
+    Benda dilacak antar-frame lewat kombinasi IoU kotak, jarak titik tengah adaptif, dan
+    ekstrapolasi kecepatan gerak (tahan goyangan kamera & gerakan konveyor cepat).
     """
 
-    def __init__(self, jendela: int = 3, iou_min: float = 0.15, max_dist_px: float = 120.0, umur_maks: int = 3) -> None:
+    def __init__(
+        self,
+        jendela: int = 5,
+        iou_min: float = 0.15,
+        max_dist_px: float = 300.0,
+        umur_maks: int = 4,
+        smooth_factor: float = 0.70,
+    ) -> None:
         self.jendela = jendela
         self.iou_min = iou_min
         self.max_dist_px = max_dist_px
         self.umur_maks = umur_maks
+        self.smooth_factor = smooth_factor
         self._tracks: list[dict] = []
         self._next_id = 1
 
@@ -129,15 +138,19 @@ class Penstabil:
             d_center = getattr(d, "center", compute_center(d.bbox))
             for j, t in enumerate(self._tracks):
                 if getattr(d, "track_id", None) is not None and t.get("track_id") == d.track_id:
-                    pairs.append((10.0, i, j))
+                    pairs.append((100.0, i, j))
                     continue
-                iou = iou_xyxy(d.bbox, t["bbox"])
-                t_center = compute_center(t["bbox"])
+                t_box = t["bbox"]
+                iou = iou_xyxy(d.bbox, t_box)
+                t_center = compute_center(t_box)
                 dist = ((d_center[0] - t_center[0]) ** 2 + (d_center[1] - t_center[1]) ** 2) ** 0.5
                 if iou >= self.iou_min:
-                    pairs.append((iou + 1.0, i, j))
+                    pairs.append((iou + 2.0, i, j))
                 elif dist <= self.max_dist_px:
-                    pairs.append((max(0.1, (self.max_dist_px - dist) / self.max_dist_px), i, j))
+                    score = max(0.05, 1.0 - (dist / self.max_dist_px))
+                    if t.get("last_class_id") == d.class_id:
+                        score += 0.5
+                    pairs.append((score, i, j))
 
         pairs.sort(reverse=True, key=lambda x: x[0])
         match: dict[int, int] = {}
@@ -152,16 +165,49 @@ class Penstabil:
         for i, d in enumerate(dets):
             if i in match:
                 t = self._tracks[match[i]]
+                prev_box = t["bbox"]
+                # Penghalusan posisi kotak (exponential moving average) agar tidak bergetar saat kamera goyang
+                cur_box = d.bbox
+                s = self.smooth_factor
+                smoothed_bbox = (
+                    int(round(s * cur_box[0] + (1.0 - s) * prev_box[0])),
+                    int(round(s * cur_box[1] + (1.0 - s) * prev_box[1])),
+                    int(round(s * cur_box[2] + (1.0 - s) * prev_box[2])),
+                    int(round(s * cur_box[3] + (1.0 - s) * prev_box[3])),
+                )
+                smoothed_center = compute_center(smoothed_bbox)
+                prev_c = compute_center(prev_box)
+                vx = smoothed_center[0] - prev_c[0]
+                vy = smoothed_center[1] - prev_c[1]
+                t["vx"] = 0.6 * vx + 0.4 * t.get("vx", 0.0)
+                t["vy"] = 0.6 * vy + 0.4 * t.get("vy", 0.0)
             else:
                 tid = getattr(d, "track_id", None) or self._next_id
                 self._next_id += 1
-                t = {"votes": deque(maxlen=self.jendela), "track_id": tid, "hits": 0}
+                t = {
+                    "votes": deque(maxlen=self.jendela),
+                    "track_id": tid,
+                    "hits": 0,
+                    "vx": 0.0,
+                    "vy": 0.0,
+                }
                 self._tracks.append(t)
-            t["bbox"], t["umur"] = d.bbox, 0
+                smoothed_bbox = d.bbox
+                smoothed_center = d.center
+
+            t["bbox"], t["umur"] = smoothed_bbox, 0
             t["hits"] = t.get("hits", 0) + 1
             t["votes"].append((d.class_id, d.class_name, d.confidence))
+            t["last_class_id"] = d.class_id
 
             tid = getattr(d, "track_id", None) or t.get("track_id")
+
+            # Perbarui koordinat ternormalisasi jika center berubah
+            c_norm = d.center_norm
+            if d.center[0] > 0 and d.center[1] > 0 and (smoothed_center != d.center):
+                rx = d.center_norm[0] / float(d.center[0])
+                ry = d.center_norm[1] / float(d.center[1])
+                c_norm = (round(smoothed_center[0] * rx, 4), round(smoothed_center[1] * ry, 4))
 
             # Putuskan suara terbanyak
             votes = t["votes"]
@@ -171,35 +217,52 @@ class Penstabil:
             (best_cid, best_cname), _ = max(skor.items(), key=lambda kv: kv[1])
 
             if best_cid == d.class_id:
-                if hasattr(d, "track_id") and d.track_id != tid:
-                    d = replace(d, track_id=tid)
-                out.append(d)
+                d_out = replace(d, bbox=smoothed_bbox, center=smoothed_center, center_norm=c_norm, track_id=tid)
             else:
-                conf_avg = float(np.mean([c for i, _, c in votes if i == best_cid]))
-                out.append(
-                    replace(
-                        d,
-                        class_id=best_cid,
-                        class_name=best_cname,
-                        label=display_label(best_cname),
-                        confidence=conf_avg,
-                        catatan="suara terbanyak",
-                        track_id=tid,
-                    )
+                conf_avg = float(np.mean([c for ci, _, c in votes if ci == best_cid]))
+                d_out = replace(
+                    d,
+                    bbox=smoothed_bbox,
+                    center=smoothed_center,
+                    center_norm=c_norm,
+                    class_id=best_cid,
+                    class_name=best_cname,
+                    label=display_label(best_cname),
+                    confidence=conf_avg,
+                    catatan="suara terbanyak",
+                    track_id=tid,
                 )
+            t["last_d"] = d_out
+            out.append(d_out)
 
-        # Anti-flicker: tahan 1 frame jika benda stabil sempat hilang sesaat saat digeser cepat
-        for t in self._tracks:
-            if t["umur"] == 1 and t.get("hits", 0) >= 3 and "last_d" in t:
-                out.append(t["last_d"])
-
-        for d in out:
-            tid = getattr(d, "track_id", None)
-            if tid:
-                for t in self._tracks:
-                    if t.get("track_id") == tid:
-                        t["last_d"] = d
-                        break
+        # Anti-flicker & Coasting: Jika benda sempat hilang 1-3 frame karena motion blur / goyangan kamera
+        matched_track_indices = set(match.values())
+        for idx, t in enumerate(self._tracks):
+            if idx not in matched_track_indices and 1 <= t["umur"] <= 3 and t.get("hits", 0) >= 2 and "last_d" in t:
+                last_d = t["last_d"]
+                vx = int(round(t.get("vx", 0.0)))
+                vy = int(round(t.get("vy", 0.0)))
+                extrapolated_box = (
+                    last_d.bbox[0] + vx,
+                    last_d.bbox[1] + vy,
+                    last_d.bbox[2] + vx,
+                    last_d.bbox[3] + vy,
+                )
+                extrapolated_center = compute_center(extrapolated_box)
+                c_norm = last_d.center_norm
+                if last_d.center[0] > 0 and last_d.center[1] > 0:
+                    rx = last_d.center_norm[0] / float(last_d.center[0])
+                    ry = last_d.center_norm[1] / float(last_d.center[1])
+                    c_norm = (round(extrapolated_center[0] * rx, 4), round(extrapolated_center[1] * ry, 4))
+                coasted_d = replace(
+                    last_d,
+                    bbox=extrapolated_box,
+                    center=extrapolated_center,
+                    center_norm=c_norm,
+                    catatan="stabil",
+                )
+                out.append(coasted_d)
+                t["bbox"] = extrapolated_box
 
         self._tracks = [t for t in self._tracks if t["umur"] <= self.umur_maks]
         return out

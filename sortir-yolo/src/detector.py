@@ -79,16 +79,19 @@ def _cek_warna_kulit(patch: np.ndarray) -> float:
 
 
 def is_human_skin_face(crop: np.ndarray, frame_w: int, frame_h: int) -> bool:
-    """Mendeteksi apakah objek adalah wajah manusia di depan webcam."""
+    """Mendeteksi apakah objek adalah wajah manusia di depan webcam.
+    
+    Koin atau tutup botol kecil yang dipegang jari manusia tidak boleh ditolak sebagai wajah.
+    """
     h, w = crop.shape[:2]
     if w < 10 or h < 10:
         return False
     area_frac = (w * h) / float(max(frame_w * frame_h, 1))
     skin_frac = _cek_warna_kulit(crop)
-    # Wajah di depan webcam: area cukup besar (> 2.5% frame) dan kaya warna kulit (> 35%)
-    if skin_frac > 0.35 and area_frac > 0.025:
+    # Wajah di depan webcam: harus cukup besar di layar DAN kaya warna kulit
+    if skin_frac > 0.40 and area_frac > 0.035 and min(w, h) >= 90:
         return True
-    if skin_frac > 0.65:
+    if skin_frac > 0.70 and area_frac > 0.020 and min(w, h) >= 80:
         return True
     return False
 
@@ -138,14 +141,14 @@ def tutup_berwarna(frame: np.ndarray, bbox: tuple[int, int, int, int], min_frac:
     c = ciri_warna(frame, bbox)
     if c is None or c["frac_pekat"] < min_frac:
         return False
-    # Koin kuningan emas Rp 1000 berada di hue 30..55 (kuning keemasan) dengan saturasi kusam/rendah (< 0.40).
-    # Jika berada di rentang warna kuning emas (30..55 derajat), syaratkan saturasi pekat khas plastik (> 0.55).
-    if 30.0 <= c["hue"] <= 55.0:
-        return c["sat"] > 0.55
+    # Koin kuningan emas Rp 1000 / Rp 500 berada di hue 15..60 (kuning oranye keemasan)
+    # Plastik pekat harus memiliki saturasi sangat tinggi (> 0.65) agar koin kuningan kusam tidak tertukar
+    if 15.0 <= c["hue"] <= 60.0:
+        return c["sat"] > 0.65
     return True
 
 
-def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> bool:
+def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int], confidence: float = 0.50) -> bool:
     """Verifikasi khusus koin: tolak kunci (ada lubang tembus gantungan), plastik abu-abu polos, dan wajah manusia."""
     x1, y1, x2, y2 = bbox
     w, h = x2 - x1, y2 - y1
@@ -164,17 +167,25 @@ def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> 
     if is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
         return False
 
-    # 2. Cek Lubang Internal Kunci (Lubang gantungan tembus meja: 1.5% - 25% luas kotak)
+    # 2. Cek Lubang Internal Kunci (Kunci asli punya 1 lubang gantungan tunggal nyata 2% - 20% area)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     cnts, hier = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    large_holes = []
     if hier is not None:
         for idx, h_info in enumerate(hier[0]):
             if h_info[3] != -1:  # Kontur internal (lubang)
                 hole_area = cv2.contourArea(cnts[idx])
                 frac = hole_area / float(w * h)
-                if 0.015 < frac < 0.25:  # Lubang gantungan kunci nyata
-                    return False
+                if 0.020 <= frac <= 0.20:
+                    large_holes.append(frac)
+    # Jika tepat 1 lubang besar tunggal -> kunci
+    if len(large_holes) == 1:
+        return False
+
+    # Jika deteksi YOLO sangat percaya diri (conf >= 0.75), langsung izinkan
+    if confidence >= 0.75:
+        return True
 
     min_dim = min(w, h)
     ch, cw = gray.shape[:2]
@@ -192,11 +203,11 @@ def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int]) -> 
 
         if min_dim >= 75:
             # Jarak dekat / sedang: uji tekstur penuh (plastik polos ditolak)
-            if edge_density < 0.035 and std_dev < 22.0 and grad_mag < 25.0:
+            if edge_density < 0.018 and std_dev < 17.0 and grad_mag < 19.0:
                 return False
         elif min_dim >= 40:
             # Jarak menengah: ambang batas tekstur lebih toleran
-            if edge_density < 0.020 and std_dev < 16.0 and grad_mag < 18.0:
+            if edge_density < 0.010 and std_dev < 12.0 and grad_mag < 14.0:
                 return False
 
     return True
@@ -227,7 +238,7 @@ class Detector:
     def __init__(
         self,
         weights: str | Path | None = None,
-        conf: float = 0.40,
+        conf: float = 0.30,
         imgsz: int = 640,
         iou: float = 0.45,
         device: str = "auto",
@@ -339,7 +350,7 @@ class Detector:
                 catatan = "koreksi warna"
 
             # 4. Verifikasi Koin Asli (Tolak kunci, plastik abu-abu polos, dan wajah manusia)
-            if use_filter and class_name == "koin" and not verifikasi_koin_asli(frame, bbox):
+            if use_filter and class_name == "koin" and not verifikasi_koin_asli(frame, bbox, confidence=confidence):
                 continue
 
             # 5. Verifikasi Tutup Botol Asli (Tolak wajah manusia, tetapi izinkan tutup botol nyata)

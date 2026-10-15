@@ -250,7 +250,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     ap.add_argument("--source", default="0", help="nomor kamera (0,1,..) atau path gambar/video")
-    ap.add_argument("--conf", type=float, default=0.40, help="threshold confidence (default: 0.40)")
+    ap.add_argument("--conf", type=float, default=0.30, help="threshold confidence (default: 0.30)")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--width", type=int, default=1280, help="lebar kamera yang diminta")
