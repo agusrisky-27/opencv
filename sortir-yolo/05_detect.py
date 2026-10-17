@@ -22,9 +22,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.camera import Camera, CameraError, parse_source
+from src.camera import Camera, CameraError, ThreadedCamera, parse_source
 from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
 from src.detector import Detection, Detector
+from src.middleware_client import MiddlewareSender
 from src.mqtt_client import MqttSender
 from src.utils import (
     Penstabil,
@@ -127,8 +128,12 @@ def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = Tr
 
 
 def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) -> int:
+    is_network = isinstance(source, str) and (
+        source.startswith("http://") or source.startswith("https://") or source.startswith("rtsp://")
+    )
+    cam_cls = ThreadedCamera if (args.threaded or is_network) else Camera
     try:
-        cam = Camera(source, args.width, args.height).open(auto_fallback=True)
+        cam = cam_cls(source, args.width, args.height).open(auto_fallback=True)
     except CameraError as exc:
         print(exc)
         return 1
@@ -149,6 +154,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
         enabled=not args.no_mqtt,
         cooldown=args.mqtt_cooldown,
     )
+    middleware_sender = MiddlewareSender(base_url=args.middleware, enabled=bool(args.middleware))
 
     prev, fps, last_print = time.time(), 0.0, 0.0
     print("\nKontrol Keyboard:")
@@ -186,6 +192,20 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if detections and mqtt_sender.enabled:
                 for d in detections:
                     mqtt_sender.send_detection(d.class_name, d.confidence, d.track_id)
+
+            # Kirim sinyal ke Local Middleware Server jika diaktifkan
+            if detections and middleware_sender.enabled:
+                for d in detections:
+                    z_val = 2.0 if "koin" in d.class_name else 12.0
+                    middleware_sender.send_detection(
+                        class_name=d.class_name,
+                        confidence=d.confidence,
+                        x_mm=float(d.center[0]),
+                        y_mm=float(d.center[1]),
+                        z_mm=z_val,
+                        track_id=d.track_id,
+                        aksi="AMBIL",
+                    )
 
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
@@ -275,6 +295,8 @@ def main() -> int:
     ap.add_argument("--max-ar", type=float, default=1.85, help="aspek rasio w/h maksimum (default: 1.85)")
     ap.add_argument("--max-area", type=float, default=0.40, help="fraksi luas maksimal terhadap frame (default: 0.40)")
     ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
+    ap.add_argument("--threaded", action="store_true", help="gunakan background thread agar capture zero-latency (otomatis aktif untuk stream URL)")
+    ap.add_argument("--middleware", default=None, help="URL server middleware lokal (misal: http://localhost:8000)")
     args = ap.parse_args()
 
     try:

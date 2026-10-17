@@ -43,13 +43,20 @@ python 03_merge_datasets.py           # gabung jadi 2 kelas + laporan
 python 05_detect.py                   # deteksi webcam dengan models/best.pt
 ```
 
-### Deteksi (`05_detect.py`)
+### Deteksi Single Camera (`05_detect.py`)
 ```bash
-python 05_detect.py                          # webcam 0
-python 05_detect.py --source 1 --conf 0.4    # kamera lain / threshold lain
-python 05_detect.py --source foto.jpg        # satu gambar (hasil di outputs/)
+python 05_detect.py                                          # Webcam internal/USB index 0
+python 05_detect.py --source 1 --conf 0.4                    # Kamera USB eksternal index 1
+python 05_detect.py --source http://192.168.1.50:81/stream   # ESP32-CAM via WiFi stream
+python 05_detect.py --source foto.jpg                        # Satu gambar (hasil di outputs/)
 ```
-Tombol: `q`/`ESC` keluar, `s` screenshot, `c` simpan koordinat ke `outputs/koordinat.csv`.
+
+### Deteksi Dual Camera - Webcam + ESP32-CAM (`05_detect_dual.py`)
+Jalankan kedua kamera sekaligus dalam satu layar split-screen (zero-latency multi-threaded):
+```bash
+python 05_detect_dual.py --source1 0 --source2 http://192.168.1.50:81/stream
+```
+Tombol: `q`/`ESC` keluar, `s` screenshot, `c` simpan koordinat ke `outputs/koordinat.csv`, `w` warna kelas.
 Terminal mencetak: `[12:30:01] Koin | conf=0.92 | center=(320, 240) | center_norm=(0.5, 0.5) | bbox=(...)`.
 
 ## EXTRA: tambah foto sendiri (sangat disarankan)
