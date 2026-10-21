@@ -239,7 +239,7 @@ class Detector:
         self,
         weights: str | Path | None = None,
         conf: float = 0.30,
-        imgsz: int = 640,
+        imgsz: int = 1280,
         iou: float = 0.45,
         device: str = "auto",
         model: Any = None,

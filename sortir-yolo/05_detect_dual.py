@@ -107,7 +107,7 @@ def main() -> int:
     ap.add_argument("--label2", default="Kamera 2 (ESP32-CAM)", help="Label nama tampilan kamera 2")
     ap.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS, help="Path ke weights model YOLO")
     ap.add_argument("--conf", type=float, default=0.30, help="Confidence threshold (default: 0.30)")
-    ap.add_argument("--imgsz", type=int, default=640)
+    ap.add_argument("--imgsz", type=int, default=1280, help="Resolusi input AI (default: 1280)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--width", type=int, default=640, help="Lebar frame display tiap kamera")
     ap.add_argument("--height", type=int, default=480, help="Tinggi frame display tiap kamera")
