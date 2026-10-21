@@ -26,7 +26,6 @@ from src.camera import Camera, CameraError, ThreadedCamera, parse_source
 from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
 from src.detector import Detection, Detector
 from src.middleware_client import MiddlewareSender
-from src.mqtt_client import MqttSender
 from src.utils import (
     Penstabil,
     append_csv,
@@ -68,7 +67,7 @@ def annotate(
     show_persen: bool = True,
     warna_kelas: bool = False,
     track_active: bool = False,
-    mqtt_active: bool = False,
+    middleware_active: bool = True,
 ) -> None:
     if roi_active and roi is not None:
         draw_roi(frame, roi, active=True)
@@ -83,7 +82,7 @@ def annotate(
         filter_active=filter_active,
         roi_active=roi_active,
         track_active=track_active,
-        mqtt_active=mqtt_active,
+        middleware_active=middleware_active,
     )
 
 
@@ -145,16 +144,10 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
     current_conf = detector.conf
     penstabil = Penstabil() if not args.tanpa_stabil else None
 
-    mqtt_sender = MqttSender(
-        broker=args.mqtt_broker,
-        port=args.mqtt_port,
-        username=args.mqtt_user,
-        password=args.mqtt_pass,
-        topic=args.mqtt_topic,
-        enabled=not args.no_mqtt,
-        cooldown=args.mqtt_cooldown,
+    middleware_sender = MiddlewareSender(
+        base_url=args.middleware,
+        enabled=not args.no_middleware,
     )
-    middleware_sender = MiddlewareSender(base_url=args.middleware, enabled=bool(args.middleware))
 
     prev, fps, last_print = time.time(), 0.0, 0.0
     print("\nKontrol Keyboard:")
@@ -162,7 +155,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
     print("  [s]         : Simpan tangkapan layar (screenshot)")
     print("  [c]         : Simpan koordinat objek ke CSV")
     print("  [t]         : Toggle Object Tracking (ON/OFF)")
-    print("  [m]         : Toggle MQTT IoT Sender (ON/OFF)")
+    print("  [m]         : Toggle Pengiriman ke Middleware Lokal (ON/OFF)")
     print("  [f]         : Toggle Smart Filter (ON/OFF)")
     print("  [r]         : Toggle ROI Zona Kerja (ON/OFF)")
     print("  [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)")
@@ -188,12 +181,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if penstabil is not None:
                 detections = penstabil.update(detections)
 
-            # Kirim sinyal MQTT ke ESP32 secara real-time
-            if detections and mqtt_sender.enabled:
-                for d in detections:
-                    mqtt_sender.send_detection(d.class_name, d.confidence, d.track_id)
-
-            # Kirim sinyal ke Local Middleware Server jika diaktifkan
+            # Kirim sinyal ke Local Middleware Server secara real-time
             if detections and middleware_sender.enabled:
                 for d in detections:
                     z_val = 2.0 if "koin" in d.class_name else 12.0
@@ -226,7 +214,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 show_persen=not args.tanpa_persen,
                 warna_kelas=warna_kelas_on,
                 track_active=detector.track,
-                mqtt_active=mqtt_sender.enabled,
+                middleware_active=middleware_sender.enabled,
             )
             cv2.imshow(WINDOW, frame)
 
@@ -242,8 +230,8 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 detector.track = not detector.track
                 print(f"[Object Tracking] -> {'ON' if detector.track else 'OFF'}")
             if key in (ord("m"), ord("M")):
-                mqtt_sender.enabled = not mqtt_sender.enabled
-                print(f"[MQTT IoT] -> {'ON (Aktif)' if mqtt_sender.enabled else 'OFF (Mati)'}")
+                middleware_sender.enabled = not middleware_sender.enabled
+                print(f"[Middleware Lokal] -> {'ON (Aktif)' if middleware_sender.enabled else 'OFF (Mati)'}")
             if key in (ord("f"), ord("F")):
                 smart_filter_on = not smart_filter_on
                 print(f"[Smart Filter] -> {'ON' if smart_filter_on else 'OFF'}")
@@ -261,7 +249,6 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 print(f"[Confidence] -> {current_conf:.2f}")
     finally:
         cam.release()
-        mqtt_sender.close()
         cv2.destroyAllWindows()
     return 0
 
@@ -280,13 +267,8 @@ def main() -> int:
     ap.add_argument("--no-show", action="store_true", help="jangan buka jendela (khusus untuk gambar)")
     ap.add_argument("--no-smart-filter", action="store_true", help="matikan filter geometri cerdas")
     ap.add_argument("--no-track", action="store_true", help="matikan object tracking real-time (ByteTrack)")
-    ap.add_argument("--no-mqtt", action="store_true", help="matikan pengiriman MQTT ke ESP32")
-    ap.add_argument("--mqtt-broker", default="p8f1fa01.ala.asia-southeast1.emqxsl.com", help="alamat broker MQTT (default: p8f1fa01.ala.asia-southeast1.emqxsl.com)")
-    ap.add_argument("--mqtt-port", type=int, default=8883, help="port MQTT (default: 8883)")
-    ap.add_argument("--mqtt-user", default="admin_pabrik", help="username MQTT (default: admin_pabrik)")
-    ap.add_argument("--mqtt-pass", default="rahasia123", help="password MQTT (default: rahasia123)")
-    ap.add_argument("--mqtt-topic", default="sortir/koin/agusrisky", help="topik MQTT (default: sortir/koin/agusrisky)")
-    ap.add_argument("--mqtt-cooldown", type=float, default=2.0, help="jeda waktu pengiriman MQTT per objek (detik)")
+    ap.add_argument("--middleware", default="http://localhost:8000", help="URL server middleware lokal (default: http://localhost:8000)")
+    ap.add_argument("--no-middleware", action="store_true", help="matikan pengiriman koordinat ke middleware lokal")
     ap.add_argument("--tanpa-stabil", action="store_true", help="matikan penstabil suara-terbanyak multi-frame")
     ap.add_argument("--tanpa-persen", action="store_true", help="jangan tampilkan persentase confidence di label")
     ap.add_argument("--warna-kelas", action="store_true", help="bedakan warna kotak tiap kelas (koin=emas, tutup_botol=cyan)")
@@ -296,7 +278,6 @@ def main() -> int:
     ap.add_argument("--max-area", type=float, default=0.40, help="fraksi luas maksimal terhadap frame (default: 0.40)")
     ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
     ap.add_argument("--threaded", action="store_true", help="gunakan background thread agar capture zero-latency (otomatis aktif untuk stream URL)")
-    ap.add_argument("--middleware", default=None, help="URL server middleware lokal (misal: http://localhost:8000)")
     args = ap.parse_args()
 
     try:
@@ -317,7 +298,7 @@ def main() -> int:
         return 1
     print(f"Model: {args.weights} | device: {detector.device} | conf: {args.conf} | "
           f"filter: {'ON' if detector.smart_filter else 'OFF'} | track: {'ON' if detector.track else 'OFF'} | "
-          f"mqtt: {'ON' if not args.no_mqtt else 'OFF'}")
+          f"middleware: {'ON (' + args.middleware + ')' if not args.no_middleware else 'OFF'}")
 
     source = parse_source(args.source)
     if isinstance(source, str) and Path(source).suffix.lower() in IMAGE_EXTS:

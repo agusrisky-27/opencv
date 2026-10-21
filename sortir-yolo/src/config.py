@@ -39,19 +39,19 @@ CLASS_COLORS: dict[str, tuple[int, int, int]] = {
 }
 
 # ==============================================================================
-# KOORDINAT WADAH PEMBUANGAN / DROP ZONES (dalam mm)
-# Besok Anda cukup mengganti angka x, y, z di bawah ini sesuai hasil pengukuran:
+# // [ISI KOORDINAT WADAH MENARUH BARANG DI SINI] (dalam satuan milimeter - mm)
+# Silakan ganti angka X, Y, Z di bawah ini sesuai posisi fisik wadah sortir Anda:
 # ==============================================================================
 DROP_COORDINATES: dict[str, dict[str, float]] = {
     "koin": {
-        "x": -150.0,  # <-- Ganti nilai X wadah Koin di sini (misal: -150.0 mm)
-        "y": 100.0,   # <-- Ganti nilai Y wadah Koin di sini (misal: 100.0 mm)
-        "z": 45.0,    # <-- Ganti nilai Z wadah Koin di sini (ketinggian aman drop)
+        "x": -150.0,  # // ISI KOORDINAT X WADAH KOIN DI SINI (misal: -150.0 mm)
+        "y": 100.0,   # // ISI KOORDINAT Y WADAH KOIN DI SINI (misal: 100.0 mm)
+        "z": 45.0,    # // ISI KOORDINAT Z WADAH KOIN DI SINI (ketinggian aman drop)
     },
     "tutup_botol": {
-        "x": 150.0,   # <-- Ganti nilai X wadah Tutup Botol di sini (misal: 150.0 mm)
-        "y": 100.0,   # <-- Ganti nilai Y wadah Tutup Botol di sini (misal: 100.0 mm)
-        "z": 55.0,    # <-- Ganti nilai Z wadah Tutup Botol di sini (ketinggian aman drop)
+        "x": 150.0,   # // ISI KOORDINAT X WADAH TUTUP BOTOL DI SINI (misal: 150.0 mm)
+        "y": 100.0,   # // ISI KOORDINAT Y WADAH TUTUP BOTOL DI SINI (misal: 100.0 mm)
+        "z": 55.0,    # // ISI KOORDINAT Z WADAH TUTUP BOTOL DI SINI (ketinggian aman drop)
     },
 }
 

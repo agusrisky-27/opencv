@@ -315,7 +315,7 @@ def draw_overlay(
     filter_active: bool | None = None,
     roi_active: bool | None = None,
     track_active: bool | None = None,
-    mqtt_active: bool | None = None,
+    middleware_active: bool | None = None,
 ) -> None:
     """FPS dan status sistem di pojok kiri atas, bantuan tombol di pojok bawah."""
     status_parts = [f"FPS: {fps:.1f}", f"Objek: {count}"]
@@ -325,15 +325,15 @@ def draw_overlay(
         status_parts.append(f"Filter: {'ON' if filter_active else 'OFF'}")
     if track_active is not None:
         status_parts.append(f"Track: {'ON' if track_active else 'OFF'}")
-    if mqtt_active is not None:
-        status_parts.append(f"MQTT: {'ON' if mqtt_active else 'OFF'}")
+    if middleware_active is not None:
+        status_parts.append(f"Middleware: {'ON' if middleware_active else 'OFF'}")
     if roi_active is not None:
         status_parts.append(f"ROI: {'ON' if roi_active else 'OFF'}")
 
     _text_with_outline(frame, " | ".join(status_parts), (10, 25), 0.65)
     _text_with_outline(
         frame,
-        "q: keluar | s: foto | t: track | m: mqtt | f: filter | r: ROI | +/-: conf",
+        "q: keluar | s: foto | t: track | m: middleware | f: filter | r: ROI | +/-: conf",
         (10, frame.shape[0] - 10),
         0.5,
     )

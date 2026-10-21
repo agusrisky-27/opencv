@@ -22,7 +22,7 @@ Tombol Keyboard:
     [q] / [ESC] : Keluar
     [s]         : Simpan screenshot kedua kamera
     [c]         : Simpan koordinat objek ke CSV
-    [m]         : Toggle MQTT Sender (ON/OFF)
+    [m]         : Toggle Middleware Lokal (ON/OFF)
     [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)
     [+] / [-]   : Naikkan / turunkan confidence threshold
 """
@@ -40,7 +40,6 @@ from src.camera import CameraError, ThreadedCamera, parse_source
 from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, OUTPUT_DIR
 from src.detector import Detection, Detector
 from src.middleware_client import MiddlewareSender
-from src.mqtt_client import MqttSender
 from src.utils import append_csv, draw_detection, save_screenshot
 
 WINDOW_DUAL = "Deteksi Dual Kamera - Sortir YOLO (Webcam + ESP32-CAM)"
@@ -116,14 +115,8 @@ def main() -> int:
     ap.add_argument("--flip2", action="store_true", help="Cerminkan kamera 2 secara horizontal")
     ap.add_argument("--warna-kelas", action="store_true", help="Bedakan warna kotak (Koin=Emas, Tutup=Cyan)")
     ap.add_argument("--no-smart-filter", action="store_true", help="Matikan filter rasio & ukuran")
-    ap.add_argument("--no-mqtt", action="store_true", help="Matikan pengiriman MQTT")
-    ap.add_argument("--mqtt-broker", default="p8f1fa01.ala.asia-southeast1.emqxsl.com")
-    ap.add_argument("--mqtt-port", type=int, default=8883)
-    ap.add_argument("--mqtt-user", default="admin_pabrik")
-    ap.add_argument("--mqtt-pass", default="rahasia123")
-    ap.add_argument("--mqtt-topic", default="sortir/koin/agusrisky")
-    ap.add_argument("--mqtt-cooldown", type=float, default=2.0)
-    ap.add_argument("--middleware", default=None, help="URL server middleware lokal (misal: http://localhost:8000)")
+    ap.add_argument("--middleware", default="http://localhost:8000", help="URL server middleware lokal (default: http://localhost:8000)")
+    ap.add_argument("--no-middleware", action="store_true", help="Matikan pengiriman ke middleware lokal")
     args = ap.parse_args()
 
     # Load YOLO Detector
@@ -143,17 +136,17 @@ def main() -> int:
     print("==================================================")
     print(" MENJALANKAN DUAL CAMERA (WEBCAM + ESP32-CAM)")
     print("==================================================")
-    print(f" [Kamera 1] : {args.source1} ({args.label1})")
-    print(f" [Kamera 2] : {args.source2} ({args.label2})")
-    print(f" [Model]    : {args.weights}")
-    print(f" [Conf]     : {args.conf}")
-    print(f" [MQTT]     : {'ON' if not args.no_mqtt else 'OFF'}")
+    print(f" [Kamera 1]   : {args.source1} ({args.label1})")
+    print(f" [Kamera 2]   : {args.source2} ({args.label2})")
+    print(f" [Model]      : {args.weights}")
+    print(f" [Conf]       : {args.conf}")
+    print(f" [Middleware] : {'ON (' + args.middleware + ')' if not args.no_middleware else 'OFF'}")
     print("==================================================")
     print("Kontrol Keyboard:")
     print("  [q] / [ESC] : Keluar")
     print("  [s]         : Simpan tangkapan layar (screenshot dual)")
     print("  [c]         : Simpan koordinat kedua kamera ke CSV")
-    print("  [m]         : Toggle MQTT (ON/OFF)")
+    print("  [m]         : Toggle Middleware Lokal (ON/OFF)")
     print("  [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)")
     print("  [+] / [-]   : Naikkan / turunkan confidence threshold\n")
 
@@ -182,16 +175,7 @@ def main() -> int:
         cam1.release()
         return 1
 
-    mqtt_sender = MqttSender(
-        broker=args.mqtt_broker,
-        port=args.mqtt_port,
-        username=args.mqtt_user,
-        password=args.mqtt_pass,
-        topic=args.mqtt_topic,
-        enabled=not args.no_mqtt,
-        cooldown=args.mqtt_cooldown,
-    )
-    middleware_sender = MiddlewareSender(base_url=args.middleware, enabled=bool(args.middleware))
+    middleware_sender = MiddlewareSender(base_url=args.middleware, enabled=not args.no_middleware)
 
     warna_kelas_on = bool(args.warna_kelas)
     current_conf = args.conf
@@ -222,10 +206,6 @@ def main() -> int:
                 dets1 = detector.detect(raw1, apply_smart_filter=smart_filter_on)
                 all_detections.extend(dets1)
 
-                if dets1 and mqtt_sender.enabled:
-                    for d in dets1:
-                        mqtt_sender.send_detection(f"{d.class_name}_cam1", d.confidence, d.track_id)
-
                 if dets1 and middleware_sender.enabled:
                     for d in dets1:
                         z_val = 2.0 if "koin" in d.class_name else 12.0
@@ -254,10 +234,6 @@ def main() -> int:
                 detector.conf = current_conf
                 dets2 = detector.detect(raw2, apply_smart_filter=smart_filter_on)
                 all_detections.extend(dets2)
-
-                if dets2 and mqtt_sender.enabled:
-                    for d in dets2:
-                        mqtt_sender.send_detection(f"{d.class_name}_cam2", d.confidence, d.track_id)
 
                 if dets2 and middleware_sender.enabled:
                     for d in dets2:
@@ -289,10 +265,10 @@ def main() -> int:
             # Footer status global
             footer = np.zeros((30, combined.shape[1], 3), dtype=np.uint8)
             status_text = (
-                f"MQTT: {'ON' if mqtt_sender.enabled else 'OFF'} | "
+                f"Middleware: {'ON' if middleware_sender.enabled else 'OFF'} | "
                 f"Warna: {'Kelas' if warna_kelas_on else 'Standar'} | "
                 f"Filter: {'ON' if smart_filter_on else 'OFF'} | "
-                f"Tekan [s] Screenshot | [c] CSV | [q] Keluar"
+                f"Tekan [s] Screenshot | [c] CSV | [m] Toggle Middleware | [q] Keluar"
             )
             cv2.putText(
                 footer,
@@ -318,8 +294,8 @@ def main() -> int:
                 n = append_csv(all_detections, OUTPUT_DIR / "koordinat_dual.csv")
                 print(f"{n} koordinat disimpan ke {OUTPUT_DIR / 'koordinat_dual.csv'}")
             if key in (ord("m"), ord("M")):
-                mqtt_sender.enabled = not mqtt_sender.enabled
-                print(f"[MQTT] -> {'ON' if mqtt_sender.enabled else 'OFF'}")
+                middleware_sender.enabled = not middleware_sender.enabled
+                print(f"[Middleware Lokal] -> {'ON' if middleware_sender.enabled else 'OFF'}")
             if key in (ord("w"), ord("W")):
                 warna_kelas_on = not warna_kelas_on
                 print(f"[Warna Kelas] -> {'ON' if warna_kelas_on else 'OFF'}")
@@ -333,7 +309,6 @@ def main() -> int:
     finally:
         cam1.release()
         cam2.release()
-        mqtt_sender.close()
         cv2.destroyAllWindows()
 
     return 0

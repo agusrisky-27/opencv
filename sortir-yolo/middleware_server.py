@@ -23,14 +23,28 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# ==============================================================================
+# // [ISI KOORDINAT WADAH MENARUH BARANG DI SINI] (dalam satuan milimeter - mm)
+# ==============================================================================
+# Silakan ganti angka X, Y, Z di bawah ini sesuai posisi fisik wadah sortir Anda:
+DROP_COORDINATES: dict[str, dict[str, float]] = {
+    "koin": {
+        "x": -150.0,  # // ISI KOORDINAT X WADAH KOIN DI SINI (misal: -150.0 mm)
+        "y": 100.0,   # // ISI KOORDINAT Y WADAH KOIN DI SINI (misal: 100.0 mm)
+        "z": 45.0,    # // ISI KOORDINAT Z WADAH KOIN DI SINI (ketinggian aman drop)
+    },
+    "tutup_botol": {
+        "x": 150.0,   # // ISI KOORDINAT X WADAH TUTUP BOTOL DI SINI (misal: 150.0 mm)
+        "y": 100.0,   # // ISI KOORDINAT Y WADAH TUTUP BOTOL DI SINI (misal: 100.0 mm)
+        "z": 55.0,    # // ISI KOORDINAT Z WADAH TUTUP BOTOL DI SINI (ketinggian aman drop)
+    },
+}
+
 try:
-    from src.config import DROP_COORDINATES
+    from src.config import DROP_COORDINATES as _CONFIG_DROP
+    DROP_COORDINATES.update(_CONFIG_DROP)
 except ImportError:
-    # Nilai default jika file ini dikirim mandiri tanpa folder src/
-    DROP_COORDINATES = {
-        "koin": {"x": -150.0, "y": 100.0, "z": 45.0},
-        "tutup_botol": {"x": 150.0, "y": 100.0, "z": 55.0},
-    }
+    pass
 
 # Inisialisasi FastAPI
 app = FastAPI(
