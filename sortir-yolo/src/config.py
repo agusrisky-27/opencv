@@ -77,6 +77,14 @@ DATASETS: list[dict] = [
         "kind": "classification",
         "target_class": "tutup_botol",
     },
+    {
+        "key": "bottle_cap_v2",
+        "workspace": "work2-rjplo",
+        "project": "bottle-cap-oiuwp",
+        "version": 2,
+        "kind": "detection",
+        "target_class": "tutup_botol",
+    },
 ]
 
 # Hasil label otomatis tutup botol disimpan di sini (format YOLO), lalu ikut digabung.
