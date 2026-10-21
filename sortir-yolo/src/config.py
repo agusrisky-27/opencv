@@ -38,6 +38,23 @@ CLASS_COLORS: dict[str, tuple[int, int, int]] = {
     "tutup_botol": (255, 140, 0),  # Biru / Cyan (BGR)
 }
 
+# ==============================================================================
+# KOORDINAT WADAH PEMBUANGAN / DROP ZONES (dalam mm)
+# Besok Anda cukup mengganti angka x, y, z di bawah ini sesuai hasil pengukuran:
+# ==============================================================================
+DROP_COORDINATES: dict[str, dict[str, float]] = {
+    "koin": {
+        "x": -150.0,  # <-- Ganti nilai X wadah Koin di sini (misal: -150.0 mm)
+        "y": 100.0,   # <-- Ganti nilai Y wadah Koin di sini (misal: 100.0 mm)
+        "z": 45.0,    # <-- Ganti nilai Z wadah Koin di sini (ketinggian aman drop)
+    },
+    "tutup_botol": {
+        "x": 150.0,   # <-- Ganti nilai X wadah Tutup Botol di sini (misal: 150.0 mm)
+        "y": 100.0,   # <-- Ganti nilai Y wadah Tutup Botol di sini (misal: 100.0 mm)
+        "z": 55.0,    # <-- Ganti nilai Z wadah Tutup Botol di sini (ketinggian aman drop)
+    },
+}
+
 # Sumber dataset Roboflow Universe.
 #   kind = "detection"       -> sudah punya kotak, diunduh format yolov8
 #   kind = "classification"  -> TIDAK punya kotak; diberi kotak otomatis (02_autolabel_tutup_botol.py)

@@ -43,6 +43,15 @@ def test_vision_post_and_robot_get():
     assert data["aksi"] == "AMBIL"
     assert data["kelas"] == "koin"
     assert data["x"] == 130.5
+    assert "drop_x" in data
+    assert "drop_y" in data
+    assert "drop_z" in data
+
+    # Cek endpoint drop-zones
+    drop_res = client.get("/api/robot/drop-zones")
+    assert drop_res.status_code == 200
+    assert "koin" in drop_res.json()
+    assert "tutup_botol" in drop_res.json()
 
     # 3. Panggilan kedua ESP32 (antrean sudah kosong)
     get_res_empty = client.get("/api/robot/target")

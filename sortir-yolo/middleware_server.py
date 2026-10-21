@@ -23,6 +23,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+try:
+    from src.config import DROP_COORDINATES
+except ImportError:
+    # Nilai default jika file ini dikirim mandiri tanpa folder src/
+    DROP_COORDINATES = {
+        "koin": {"x": -150.0, "y": 100.0, "z": 45.0},
+        "tutup_botol": {"x": 150.0, "y": 100.0, "z": 55.0},
+    }
+
 # Inisialisasi FastAPI
 app = FastAPI(
     title="Sortir YOLO - Local Middleware Backend",
@@ -123,15 +132,20 @@ def get_target_for_robot():
     # 2. Cek apakah ada target otomatis dari Vision
     if state.target_queue:
         target = state.target_queue.popleft()
-        state.log("ROBOT", f"Target diserahkan ke ESP32: {target['kelas']}")
+        kelas = target["kelas"]
+        drop_pos = DROP_COORDINATES.get(kelas, {"x": 0.0, "y": 0.0, "z": 0.0})
+        state.log("ROBOT", f"Target diserahkan ke ESP32: {kelas} -> Drop di ({drop_pos['x']}, {drop_pos['y']}, {drop_pos['z']})")
         return {
             "type": "AUTO",
             "available": True,
             "aksi": "AMBIL",
-            "kelas": target["kelas"],
+            "kelas": kelas,
             "x": target["x_mm"],
             "y": target["y_mm"],
             "z": target["z_mm"],
+            "drop_x": drop_pos["x"],
+            "drop_y": drop_pos["y"],
+            "drop_z": drop_pos["z"],
             "track_id": target["track_id"],
         }
 
@@ -144,7 +158,16 @@ def get_target_for_robot():
         "x": 0.0,
         "y": 0.0,
         "z": 0.0,
+        "drop_x": 0.0,
+        "drop_y": 0.0,
+        "drop_z": 0.0,
     }
+
+
+@app.get("/api/robot/drop-zones", tags=["ESP32 Robot"])
+def get_drop_zones():
+    """Mengembalikan daftar titik koordinat wadah pembuangan (Drop Zones) per kelas."""
+    return DROP_COORDINATES
 
 
 @app.post("/api/robot/status", tags=["ESP32 Robot"])

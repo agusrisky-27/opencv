@@ -303,7 +303,7 @@ def main() -> int:
                 (200, 200, 200),
                 1,
                 cv2.LINE_AA,
-            )
+            ) 
             final_display = cv2.vconcat([combined, footer])
 
             cv2.imshow(WINDOW_DUAL, final_display)
