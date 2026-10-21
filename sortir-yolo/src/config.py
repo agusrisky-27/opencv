@@ -20,13 +20,14 @@ OWN_DIR = RAW_DIR / "data_sendiri"       # foto sendiri + label YOLO (hasil extr
 
 DEFAULT_WEIGHTS = MODELS_DIR / "best.pt"
 
-# 2 kelas final (urutan = ID kelas 0, 1). JANGAN diubah setelah training.
-CLASS_NAMES: list[str] = ["koin", "tutup_botol"]
+# 3 kelas final (urutan = ID kelas 0, 1, 2). JANGAN diubah setelah training.
+CLASS_NAMES: list[str] = ["koin", "tutup_botol", "charger"]
 
 # Teks yang tampil di layar untuk tiap kelas
 DISPLAY_LABELS: dict[str, str] = {
     "koin": "Koin",
     "tutup_botol": "Tutup Botol",
+    "charger": "Charger",
 }
 
 # Warna kotak default (BGR). Merah sesuai standar proyek.
@@ -36,6 +37,7 @@ BOX_COLOR = (0, 0, 255)
 CLASS_COLORS: dict[str, tuple[int, int, int]] = {
     "koin": (0, 215, 255),         # Emas / Kuning (BGR)
     "tutup_botol": (255, 140, 0),  # Biru / Cyan (BGR)
+    "charger": (0, 255, 0),        # Hijau Terang (BGR)
 }
 
 # ==============================================================================
@@ -52,6 +54,11 @@ DROP_COORDINATES: dict[str, dict[str, float]] = {
         "x": 150.0,   # // ISI KOORDINAT X WADAH TUTUP BOTOL DI SINI (misal: 150.0 mm)
         "y": 100.0,   # // ISI KOORDINAT Y WADAH TUTUP BOTOL DI SINI (misal: 100.0 mm)
         "z": 55.0,    # // ISI KOORDINAT Z WADAH TUTUP BOTOL DI SINI (ketinggian aman drop)
+    },
+    "charger": {
+        "x": 0.0,     # // ISI KOORDINAT X WADAH CHARGER DI SINI (misal: 0.0 mm)
+        "y": 180.0,   # // ISI KOORDINAT Y WADAH CHARGER DI SINI (misal: 180.0 mm)
+        "z": 70.0,    # // ISI KOORDINAT Z WADAH CHARGER DI SINI (ketinggian aman drop)
     },
 }
 
@@ -84,6 +91,14 @@ DATASETS: list[dict] = [
         "version": 2,
         "kind": "detection",
         "target_class": "tutup_botol",
+    },
+    {
+        "key": "charger",
+        "workspace": "khamalraaj",
+        "project": "chager-r5xqk",
+        "version": 2,
+        "kind": "detection",
+        "target_class": "charger",
     },
 ]
 

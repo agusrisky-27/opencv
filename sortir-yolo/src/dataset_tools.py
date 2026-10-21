@@ -204,8 +204,17 @@ def merge_datasets(
             (out_dir / split / "images").mkdir(parents=True, exist_ok=True)
             (out_dir / split / "labels").mkdir(parents=True, exist_ok=True)
 
+    import hashlib
+
     for e in entries:
-        new_name = f"{e.key}__{e.image.name}"
+        raw_stem = e.image.stem
+        ext = e.image.suffix
+        # Batasi panjang nama file agar aman dari batas 255 karakter OS
+        max_stem_len = 160 - len(e.key) - len(ext) - 2
+        if len(raw_stem) > max_stem_len:
+            h = hashlib.md5(raw_stem.encode("utf-8")).hexdigest()[:8]
+            raw_stem = f"{raw_stem[:max_stem_len - 9]}_{h}"
+        new_name = f"{e.key}__{raw_stem}{ext}"
         stem = Path(new_name).stem
         shutil.copy2(e.image, out_dir / e.split / "images" / new_name)
         (out_dir / e.split / "labels" / f"{stem}.txt").write_text(
