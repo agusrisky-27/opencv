@@ -95,7 +95,14 @@ def print_detections(detections: list[Detection]) -> None:
               f"center_norm={d.center_norm} | bbox={d.bbox}")
 
 
-def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = True, warna_kelas: bool = False) -> int:
+def run_image(
+    detector: Detector,
+    path: Path,
+    show: bool,
+    show_persen: bool = True,
+    warna_kelas: bool = False,
+    middleware_url: str | None = None,
+) -> int:
     frame = cv2.imread(str(path))
     if frame is None:
         print(f"Tidak bisa membaca gambar: {path}")
@@ -104,6 +111,21 @@ def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = Tr
     print_detections(detections)
     if not detections:
         print("Tidak ada objek terdeteksi (semua disaring atau tidak ada objek).")
+    elif middleware_url:
+        sender = MiddlewareSender(base_url=middleware_url)
+        for d in detections:
+            z_val = 2.0 if "koin" in d.class_name else 12.0
+            sender.send_detection(
+                class_name=d.class_name,
+                confidence=d.confidence,
+                x_mm=float(d.center[0]),
+                y_mm=float(d.center[1]),
+                z_mm=z_val,
+                track_id=d.track_id,
+                aksi="AMBIL",
+            )
+        time.sleep(0.2)  # Beri waktu background thread mengirim payload
+
     annotate(
         frame,
         detections,
@@ -114,6 +136,7 @@ def run_image(detector: Detector, path: Path, show: bool, show_persen: bool = Tr
         roi_active=detector.roi is not None,
         show_persen=show_persen,
         warna_kelas=warna_kelas,
+        middleware_active=bool(middleware_url),
     )
     out = OUTPUT_DIR / f"hasil_{path.stem}.jpg"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -302,7 +325,14 @@ def main() -> int:
 
     source = parse_source(args.source)
     if isinstance(source, str) and Path(source).suffix.lower() in IMAGE_EXTS:
-        return run_image(detector, Path(source), show=not args.no_show, show_persen=not args.tanpa_persen, warna_kelas=args.warna_kelas)
+        return run_image(
+            detector,
+            Path(source),
+            show=not args.no_show,
+            show_persen=not args.tanpa_persen,
+            warna_kelas=args.warna_kelas,
+            middleware_url=args.middleware if not args.no_middleware else None,
+        )
     return run_stream(detector, source, args)
 
 
