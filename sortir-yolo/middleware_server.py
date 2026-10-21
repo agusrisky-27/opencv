@@ -38,11 +38,6 @@ DROP_COORDINATES: dict[str, dict[str, float]] = {
         "y": 100.0,   # // ISI KOORDINAT Y WADAH TUTUP BOTOL DI SINI (misal: 100.0 mm)
         "z": 55.0,    # // ISI KOORDINAT Z WADAH TUTUP BOTOL DI SINI (ketinggian aman drop)
     },
-    "charger": {
-        "x": 0.0,     # // ISI KOORDINAT X WADAH CHARGER DI SINI (misal: 0.0 mm)
-        "y": 180.0,   # // ISI KOORDINAT Y WADAH CHARGER DI SINI (misal: 180.0 mm)
-        "z": 70.0,    # // ISI KOORDINAT Z WADAH CHARGER DI SINI (ketinggian aman drop)
-    },
 }
 
 try:
@@ -70,11 +65,11 @@ app.add_middleware(
 
 # ------------------------------------------------------------- Model Data (Pydantic)
 class DetectionPayload(BaseModel):
-    kelas: str = Field(..., description="Nama kelas: 'koin', 'tutup_botol', 'charger', atau 'unknown'")
+    kelas: str = Field(..., description="Nama kelas: 'koin', 'tutup_botol', atau 'unknown'")
     confidence: float = Field(0.0, description="Tingkat kepercayaan deteksi (0.0 - 1.0)")
     x_mm: float = Field(..., description="Koordinat X fisik dalam mm")
     y_mm: float = Field(..., description="Koordinat Y fisik dalam mm")
-    z_mm: float = Field(..., description="Ketinggian Z fisik dalam mm (koin=2mm, tutup=12mm, charger=28mm)")
+    z_mm: float = Field(..., description="Ketinggian Z fisik dalam mm (koin=2mm, tutup=12mm)")
     track_id: int | None = Field(None, description="ID unik pelacak objek")
     aksi: Literal["AMBIL", "ABAIKAN"] = Field("AMBIL", description="Aksi yang harus dilakukan robot")
 
@@ -100,7 +95,7 @@ class SystemState:
         self.robot_state: str = "IDLE"
         self.robot_action: str = "Menunggu target"
         self.pending_manual_command: dict[str, Any] | None = None
-        self.counts = {"koin": 0, "tutup_botol": 0, "charger": 0, "diabaikan": 0}
+        self.counts = {"koin": 0, "tutup_botol": 0, "diabaikan": 0}
         self.logs: deque[dict[str, Any]] = deque(maxlen=100)
 
     def log(self, event: str, detail: str) -> None:
@@ -224,7 +219,7 @@ def send_manual_control(payload: ManualControlPayload):
 @app.post("/api/app/reset-stats", tags=["Web & Mobile App"])
 def reset_statistics():
     """Reset hitungan statistik koin dan tutup botol."""
-    state.counts = {"koin": 0, "tutup_botol": 0, "charger": 0, "diabaikan": 0}
+    state.counts = {"koin": 0, "tutup_botol": 0, "diabaikan": 0}
     state.target_queue.clear()
     state.log("RESET", "Statistik dan antrean direset")
     return {"status": "RESET_SUCCESS"}

@@ -5,7 +5,7 @@ from middleware_server import app, state
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    state.counts = {"koin": 0, "tutup_botol": 0, "charger": 0, "diabaikan": 0}
+    state.counts = {"koin": 0, "tutup_botol": 0, "diabaikan": 0}
     state.target_queue.clear()
     state.latest_detection = None
     state.pending_manual_command = None
@@ -52,7 +52,6 @@ def test_vision_post_and_robot_get():
     assert drop_res.status_code == 200
     assert "koin" in drop_res.json()
     assert "tutup_botol" in drop_res.json()
-    assert "charger" in drop_res.json()
 
     # 3. Panggilan kedua ESP32 (antrean sudah kosong)
     get_res_empty = client.get("/api/robot/target")

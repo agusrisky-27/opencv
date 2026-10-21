@@ -114,12 +114,7 @@ def run_image(
     elif middleware_url:
         sender = MiddlewareSender(base_url=middleware_url)
         for d in detections:
-            if "koin" in d.class_name:
-                z_val = 2.0
-            elif "tutup" in d.class_name:
-                z_val = 12.0
-            else:
-                z_val = 28.0
+            z_val = 2.0 if "koin" in d.class_name else 12.0
             sender.send_detection(
                 class_name=d.class_name,
                 confidence=d.confidence,
@@ -212,12 +207,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             # Kirim sinyal ke Local Middleware Server secara real-time
             if detections and middleware_sender.enabled:
                 for d in detections:
-                    if "koin" in d.class_name:
-                        z_val = 2.0
-                    elif "tutup" in d.class_name:
-                        z_val = 12.0
-                    else:
-                        z_val = 28.0
+                    z_val = 2.0 if "koin" in d.class_name else 12.0
                     middleware_sender.send_detection(
                         class_name=d.class_name,
                         confidence=d.confidence,
