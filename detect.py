@@ -36,7 +36,7 @@ for i, arg in enumerate(sys.argv):
 # Ubah cwd ke sortir-yolo agar output & relative path internal tetap konsisten
 os.chdir(SORTIR_DIR)
 
-spec = importlib.util.spec_from_file_location("detect_mod", SORTIR_DIR / "05_detect.py")
+spec = importlib.util.spec_from_file_location("detect_mod", SORTIR_DIR / "detect.py")
 if spec and spec.loader:
     detect_mod = importlib.util.module_from_spec(spec)
     sys.modules["detect_mod"] = detect_mod

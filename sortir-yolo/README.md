@@ -36,35 +36,35 @@ Untuk menjalankan di laptop:
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python 01_download_datasets.py        # unduh lewat API
-python 02_autolabel_tutup_botol.py    # beri kotak otomatis (cek outputs/preview_autolabel_tutup_botol.jpg!)
-python 03_merge_datasets.py           # gabung jadi 2 kelas + laporan
+python download_datasets.py        # unduh lewat API
+python autolabel_tutup_botol.py    # beri kotak otomatis (cek outputs/preview_autolabel_tutup_botol.jpg!)
+python merge_datasets.py           # gabung jadi 2 kelas + laporan
 # Training dilakukan di Google Colab (buka colab/Training_YOLO_Colab.ipynb)
-python 05_detect.py                   # deteksi webcam dengan models/best.pt
+python detect.py                   # deteksi webcam dengan models/best.pt
 ```
 
-### Deteksi Single Camera (`05_detect.py`)
+### Deteksi Single Camera (`detect.py`)
 ```bash
-python 05_detect.py                                          # Webcam internal/USB index 0
-python 05_detect.py --source 1 --conf 0.4                    # Kamera USB eksternal index 1
-python 05_detect.py --source http://192.168.1.50:81/stream   # ESP32-CAM via WiFi stream
-python 05_detect.py --source foto.jpg                        # Satu gambar (hasil di outputs/)
+python detect.py                                          # Webcam internal/USB index 0
+python detect.py --source 1 --conf 0.4                    # Kamera USB eksternal index 1
+python detect.py --source http://192.168.1.50:81/stream   # ESP32-CAM via WiFi stream
+python detect.py --source foto.jpg                        # Satu gambar (hasil di outputs/)
 ```
 
-### Deteksi Dual Camera - Webcam + ESP32-CAM (`05_detect_dual.py`)
+### Deteksi Dual Camera - Webcam + ESP32-CAM (`detect_dual.py`)
 Jalankan kedua kamera sekaligus dalam satu layar split-screen (zero-latency multi-threaded):
 ```bash
-python 05_detect_dual.py --source1 0 --source2 http://192.168.1.50:81/stream
+python detect_dual.py --source1 0 --source2 http://192.168.1.50:81/stream
 ```
 Tombol: `q`/`ESC` keluar, `s` screenshot, `c` simpan koordinat ke `outputs/koordinat.csv`, `w` warna kelas.
 Terminal mencetak: `[12:30:01] Koin | conf=0.92 | center=(320, 240) | center_norm=(0.5, 0.5) | bbox=(...)`.
 
-## EXTRA: tambah foto sendiri (sangat disarankan)
+## Ambil & Olah Foto Kamera Sendiri
 
 ```bash
-python extra_capture_data.py     # tombol 1/2/3 pilih kelas, SPASI foto, a = otomatis
-python extra_autolabel_own.py    # beri kotak otomatis (latar polos), cek preview-nya
-python 03_merge_datasets.py      # gabung ulang, lalu training lagi
+python capture.py                  # ambil foto koin/tutup botol via kamera (1/2 pilih kelas, SPASI foto, a = otomatis)
+python extra_autolabel_own.py      # beri kotak koordinat otomatis
+python merge_datasets.py           # gabung ulang, lalu training lagi
 ```
 Tips: ambil foto dengan kamera & latar yang sama dengan kondisi akhir (di atas conveyor), 1 benda per foto,
 variasikan posisi/putaran/jarak/cahaya, target 100-200 foto per kelas.

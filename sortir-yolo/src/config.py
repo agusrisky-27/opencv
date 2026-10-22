@@ -19,6 +19,8 @@ OWN_RAW_DIR = RAW_DIR / "foto_sendiri_mentah"  # foto sendiri per kelas (hasil e
 OWN_DIR = RAW_DIR / "data_sendiri"       # foto sendiri + label YOLO (hasil extra_autolabel_own.py)
 
 DEFAULT_WEIGHTS = MODELS_DIR / "best.pt"
+DEFAULT_CALIB_PATH = ROOT / "robot_calib.json"
+DEFAULT_TARGET_JSON = OUTPUT_DIR / "target_robot.json"
 
 # 2 kelas final (urutan = ID kelas 0, 1). JANGAN diubah setelah training.
 CLASS_NAMES: list[str] = ["koin", "tutup_botol"]

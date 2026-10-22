@@ -81,17 +81,17 @@ def _cek_warna_kulit(patch: np.ndarray) -> float:
 def is_human_skin_face(crop: np.ndarray, frame_w: int, frame_h: int) -> bool:
     """Mendeteksi apakah objek adalah wajah manusia di depan webcam.
     
-    Koin atau tutup botol kecil yang dipegang jari manusia tidak boleh ditolak sebagai wajah.
+    Koin atau tutup botol yang dipegang jari atau ditaruh di meja tidak boleh ditolak sebagai wajah.
     """
     h, w = crop.shape[:2]
     if w < 10 or h < 10:
         return False
     area_frac = (w * h) / float(max(frame_w * frame_h, 1))
     skin_frac = _cek_warna_kulit(crop)
-    # Wajah di depan webcam: harus cukup besar di layar DAN kaya warna kulit
-    if skin_frac > 0.40 and area_frac > 0.035 and min(w, h) >= 90:
+    # Wajah di depan webcam: harus cukup besar di layar DAN kaya warna kulit manusia
+    if skin_frac > 0.40 and area_frac > 0.020 and min(w, h) >= 90:
         return True
-    if skin_frac > 0.70 and area_frac > 0.020 and min(w, h) >= 80:
+    if skin_frac > 0.70 and area_frac > 0.015 and min(w, h) >= 80:
         return True
     return False
 
@@ -163,29 +163,13 @@ def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int], con
     if gray.max() == gray.min():
         return True  # frame sintetis polos (unit test)
 
+    # Jika deteksi YOLO sudah yakin (conf >= 0.65), langsung loloskan koin
+    if confidence >= 0.65:
+        return True
+
     # 1. Tolak jika objek adalah wajah manusia
     if is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
         return False
-
-    # 2. Cek Lubang Internal Kunci (Kunci asli punya 1 lubang gantungan tunggal nyata 2% - 20% area)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    cnts, hier = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    large_holes = []
-    if hier is not None:
-        for idx, h_info in enumerate(hier[0]):
-            if h_info[3] != -1:  # Kontur internal (lubang)
-                hole_area = cv2.contourArea(cnts[idx])
-                frac = hole_area / float(w * h)
-                if 0.020 <= frac <= 0.20:
-                    large_holes.append(frac)
-    # Jika tepat 1 lubang besar tunggal -> kunci
-    if len(large_holes) == 1:
-        return False
-
-    # Jika deteksi YOLO sangat percaya diri (conf >= 0.75), langsung izinkan
-    if confidence >= 0.75:
-        return True
 
     min_dim = min(w, h)
     ch, cw = gray.shape[:2]
