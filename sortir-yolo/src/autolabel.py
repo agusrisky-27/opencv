@@ -84,7 +84,7 @@ class WorldLabeler:
         self,
         prompts: Sequence[str] = ("bottle cap",),
         weights: str = "yolov8s-worldv2.pt",
-        conf: float = 0.10,
+        conf: float = 0.03,
         device: str = "auto",
     ) -> None:
         from ultralytics import YOLOWorld  # butuh ultralytics (+ paket CLIP, dipasang otomatis)
@@ -103,6 +103,48 @@ class WorldLabeler:
             return None
         i = int(res.boxes.conf.argmax())
         x1, y1, x2, y2 = res.boxes.xyxy[i].tolist()
+        h, w = img_bgr.shape[:2]
+        bw, bh = (x2 - x1) / w, (y2 - y1) / h
+        if bw <= 0.01 or bh <= 0.01:
+            return None
+        return ((x1 + x2) / 2 / w, (y1 + y2) / 2 / h, bw, bh)
+
+
+class ModelLabeler:
+    """Label otomatis memakai model yang sudah ada (mis. models/best.pt)."""
+
+    def __init__(
+        self,
+        weights: str | Path = "models/best.pt",
+        conf: float = 0.15,
+        device: str = "auto",
+    ) -> None:
+        from ultralytics import YOLO
+        from .utils import pick_device
+
+        self.model = YOLO(str(weights))
+        self.conf = conf
+        self.device = pick_device(device)
+
+    def box(self, img_bgr: np.ndarray, target_class: str | None = None) -> NormBox | None:
+        """Kotak dengan target_class atau confidence tertinggi."""
+        res = self.model.predict(img_bgr, conf=self.conf, device=self.device, verbose=False)[0]
+        if res.boxes is None or len(res.boxes) == 0:
+            return None
+        best_box = None
+        best_conf = -1.0
+        for b in res.boxes:
+            c_id = int(b.cls[0])
+            c_name = self.model.names.get(c_id, "")
+            conf = float(b.conf[0])
+            if target_class and c_name != target_class:
+                continue
+            if conf > best_conf:
+                best_conf = conf
+                best_box = b
+        if best_box is None:
+            return None
+        x1, y1, x2, y2 = best_box.xyxy[0].tolist()
         h, w = img_bgr.shape[:2]
         bw, bh = (x2 - x1) / w, (y2 - y1) / h
         if bw <= 0.01 or bh <= 0.01:

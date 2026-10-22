@@ -32,7 +32,7 @@ def count_photos(folder: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--source", default="0")
+    ap.add_argument("-s", "--source", default="1", help="nomor kamera (default: 1 untuk iPhone / kamera eksternal)")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--interval", type=float, default=0.4, help="jeda mode otomatis (detik)")

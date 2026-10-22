@@ -17,19 +17,37 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import cv2
 import yaml
 
-from src.autolabel import WorldLabeler, box_from_background, draw_preview, save_preview_grid, write_yolo_label
-from src.config import CLASS_NAMES, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR
+from src.autolabel import (
+    ModelLabeler,
+    WorldLabeler,
+    box_from_background,
+    draw_preview,
+    save_preview_grid,
+    write_yolo_label,
+)
+from src.config import CLASS_NAMES, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR
 
-PROMPTS = {"koin": "coin", "tutup_botol": "bottle cap"}
+PROMPTS = {
+    "koin": ["coin", "round metal coin", "rupiah coin", "money"],
+    "tutup_botol": ["bottle cap", "plastic cap", "bottle lid"],
+}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--method", choices=["cv", "world"], default="cv")
+    default_method = "model" if DEFAULT_WEIGHTS.exists() else "world"
+    ap.add_argument(
+        "--method",
+        choices=["model", "world", "cv"],
+        default=default_method,
+        help=f"metode autolabel: 'model' (best.pt), 'world' (YOLO-World), 'cv' (latar polos). Default: {default_method}",
+    )
+    ap.add_argument("--conf", type=float, default=0.15, help="confidence threshold (default: 0.15)")
     ap.add_argument("--block", type=int, default=10, help="ukuran blok foto berurutan")
     ap.add_argument("--valid-every", type=int, default=5, help="tiap blok ke-N jadi valid (5 = 20%)")
     ap.add_argument("--device", default="auto")
@@ -39,9 +57,11 @@ def main() -> int:
         print(f"{OWN_RAW_DIR} belum ada. Jalankan dulu: python extra_capture_data.py")
         return 1
 
-    world: dict[str, WorldLabeler] = {}
     if OWN_DIR.exists():
         shutil.rmtree(OWN_DIR)
+    OWN_DIR.mkdir(parents=True, exist_ok=True)
+
+    labelers: dict[str, Any] = {}
     stats: dict[str, dict[str, int]] = {}
     tiles = []
 
@@ -50,15 +70,29 @@ def main() -> int:
         if not folder.is_dir():
             continue
         files = sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS)
+        if not files:
+            continue
         stats[name] = {"ok": 0, "lewat": 0}
-        labeler = None
-        if args.method == "world":
-            labeler = world.setdefault(name, WorldLabeler([PROMPTS[name]], device=args.device))
+
+        if args.method == "model":
+            labeler = labelers.setdefault("model", ModelLabeler(DEFAULT_WEIGHTS, conf=args.conf, device=args.device))
+        elif args.method == "world":
+            labeler = labelers.setdefault(name, WorldLabeler(PROMPTS.get(name, [name]), conf=0.03, device=args.device))
+        else:
+            labeler = None
+
         for i, path in enumerate(files):
             img = cv2.imread(str(path))
             if img is None:
                 continue
-            box = labeler.box(img) if labeler else box_from_background(img)
+
+            if args.method == "model":
+                box = labeler.box(img, target_class=name)
+            elif args.method == "world":
+                box = labeler.box(img)
+            else:
+                box = box_from_background(img)
+
             if i % 15 == 0 and len(tiles) < 36:
                 tiles.append(draw_preview(img, box))
             if box is None:
