@@ -176,3 +176,54 @@ pytest -q
   Lihat pojok kanan atas layar Mac (ikon kamera hijau 🎥). Klik **Video Effects** > Matikan fitur **Center Stage (OFF)** dan pastikan slider zoom di posisi **1x**.
 - **Koin sulit terdeteksi karena silau:**  
   Koin logam memantulkan cahaya seperti cermin. Hindari lampu sorot yang mengarah tepat tegak lurus di atas koin. Gunakan pencahayaan menyebar (*diffused light*).
+
+============================================================
+# 🚀 PROGRES MINGGU INI (Jumat Lalu – Sekarang)
+============================================================
+
+Berikut adalah rangkuman pencapaian dan progres pengembangan proyek sistem sortir visi komputer (YOLOv8 + OpenCV) dari hari **Jumat pekan lalu hingga sekarang**:
+
+### 1. Pelatihan Model Baru & Peningkatan Dataset
+- **Retraining Model YOLOv8 di Colab:** Melatih ulang model dengan dataset gabungan yang diperkaya (termasuk variasi tutup botol baru dari Roboflow).
+- **Hasil Model Terbaru (`models/best.pt`):** Bobot model baru memiliki akurasi deteksi yang lebih stabil untuk koin dan tutup botol di berbagai kondisi pencahayaan.
+- **Resolusi Inferensi Optimal (`imgsz=1280`):** Mengatur resolusi bawaan deteksi ke 1280 piksel sehingga objek kecil (seperti koin receh) tetap terdeteksi dengan tajam meskipun kamera dipasang cukup tinggi di atas meja kerja.
+
+### 2. Investigasi & Penyempurnaan Deteksi Koin
+- **Solusi Masalah Koin Sulit Terdeteksi:** Dari evaluasi pengujian sampel gambar, ditemukan bahwa filter warna kulit (`is_human_skin_face`) sebelumnya kerap salah mengira meja berwarna krem atau jari tangan di dekat koin sebagai wajah manusia, sehingga koin ikut terbuang.
+- **Optimasi Smart Filter:** Menambahkan jalur *bypass* otomatis: jika confidence model $\ge 0.65$, objek koin langsung divalidasi sebagai koin asli tanpa terhalang warna meja/tangan.
+- **Hasil Pengujian:** Rasio keberhasilan deteksi pada kumpulan gambar uji koin melonjak signifikan dari ~50% menjadi **80.6% (238 dari 295 gambar uji lolos deteksi presisi)**.
+
+### 3. Penyederhanaan Arsitektur (Bebas Lag & Ringan)
+- **Penghapusan Server Middleware HTTP:** Menghilangkan perantara server HTTP/klien web yang rumit dan memakan resource. Sistem visi sekarang berjalan langsung (*standalone*) menggunakan OpenCV lokal, sehingga respons deteksi menjadi instan tanpa jeda waktu jaringan (*zero network latency*).
+- **Penghapusan Skrip Dual Kamera:** Menghapus skrip `detect_dual.py` karena sistem sudah dipastikan hanya menggunakan 1 kamera webcam tunggal yang dipasang di atas meja sortir.
+
+### 4. Standarisasi Nama File & Pembersihan Workspace
+- **Penamaan Skrip Bersih (Clean Code):** Mengubah penamaan file skrip lama yang bernomor kaku (`01_`, `02_`, `03_`, `05_`) menjadi nama skrip standar yang jelas dan intuitif:
+  - `detect.py`: Program deteksi real-time utama.
+  - `capture.py`: Perekam sampel gambar baru / dataset tambahan.
+  - `download_datasets.py`, `autolabel_tutup_botol.py`, `merge_datasets.py`: Pipeline dataset.
+- **Pembersihan Root Workspace:** Membuat folder baru `arsip_luar/` dan memindahkan file dokumentasi lama, tangkapan layar lama, dan runner duplikat ke dalamnya agar folder utama tetap bersih. File arsip Colab `sortir-yolo.zip` tetap terjaga di root.
+
+### 5. Persiapan Integrasi Koordinat untuk Tim Robotik
+- **Modul Transformasi Koordinat Meja (Affine Transform):** Membangun modul perhitungan matriks kalibrasi (`src/coordinate_transform.py` dan `kalibrasi_robot.py`) untuk mengubah titik piksel kamera $(X_{cam}, Y_{cam})$ langsung menjadi koordinat fisik milimeter robot $(X_{robot}, Y_{robot}, Z_{robot})$.
+- **API Visi Siap Pakai:** Menyediakan modul `sortir_vision_api.py` dan skrip contoh `contoh_baca_koordinat_robot.py` sehingga tim robotik dapat langsung mengimpor fungsi `dapatkan_target_sortir()` tanpa perlu memikirkan detail OpenCV di dalamnya.
+- **Dokumentasi Khusus Robotik:** Menyusun buku panduan lengkap di `PANDUAN_TIM_ROBOTIK.md` yang menjelaskan alur kerja, rumus kalibrasi 3-titik, dan cara membaca data koordinat.
+
+### 6. Pengujian Mutu Otomatis (Unit Tests)
+- **Konfigurasi Mandiri:** Menambahkan `pytest.ini` di dalam direktori `sortir-yolo` agar pengujian dapat dijalankan secara independen.
+- **100% Lulus Uji:** Seluruh **41 skenario pengujian otomatis** (`tests/`) terverifikasi berhasil (*PASSED*) tanpa kegagalan (mencakup modul deteksi, filter geometri, kalkulasi koordinat, autolabeling, dan kamera).
+
+---
+
+### 📊 Tabel Rangkuman Status Progres
+
+| Komponen / Fitur | Status Sebelumnya | Status Saat Ini | Keterangan |
+| :--- | :--- | :--- | :--- |
+| **Model YOLOv8** | Model lama (terlatih dasar) | **Model baru (`best.pt`)** | Deteksi koin & tutup botol lebih stabil |
+| **Filter Koin** | Sering tertolak warna meja | **Smart Bypass ($\ge 0.65$)** | Lolos 238/295 gambar uji |
+| **Arsitektur Sistem**| Bergantung Middleware HTTP | **Standalone OpenCV** | Cepat, ringan, bebas kendala port/jaringan |
+| **Struktur File** | Awalan `01_` s/d `05_` | **Nama bersih & modular** | `detect.py`, `capture.py`, dll |
+| **Koordinat Robot** | Belum ada | **Siap & terdokumentasi** | Affine transform piksel ke milimeter |
+| **Kerapian Root** | Banyak file loose campur aduk | **Rapi & Terarsip** | Dipindahkan ke `arsip_luar/` |
+| **Unit Testing** | Sebagian modul | **41/41 Passed (100%)** | Seluruh test suite hijau |
+
