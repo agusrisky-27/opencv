@@ -25,7 +25,6 @@ import numpy as np
 from src.camera import Camera, CameraError, ThreadedCamera, parse_source
 from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
 from src.detector import Detection, Detector
-from src.middleware_client import MiddlewareSender
 from src.utils import (
     Penstabil,
     append_csv,
@@ -67,7 +66,6 @@ def annotate(
     show_persen: bool = True,
     warna_kelas: bool = False,
     track_active: bool = False,
-    middleware_active: bool = True,
 ) -> None:
     if roi_active and roi is not None:
         draw_roi(frame, roi, active=True)
@@ -82,7 +80,6 @@ def annotate(
         filter_active=filter_active,
         roi_active=roi_active,
         track_active=track_active,
-        middleware_active=middleware_active,
     )
 
 
@@ -101,7 +98,6 @@ def run_image(
     show: bool,
     show_persen: bool = True,
     warna_kelas: bool = False,
-    middleware_url: str | None = None,
 ) -> int:
     frame = cv2.imread(str(path))
     if frame is None:
@@ -111,20 +107,6 @@ def run_image(
     print_detections(detections)
     if not detections:
         print("Tidak ada objek terdeteksi (semua disaring atau tidak ada objek).")
-    elif middleware_url:
-        sender = MiddlewareSender(base_url=middleware_url)
-        for d in detections:
-            z_val = 2.0 if "koin" in d.class_name else 12.0
-            sender.send_detection(
-                class_name=d.class_name,
-                confidence=d.confidence,
-                x_mm=float(d.center[0]),
-                y_mm=float(d.center[1]),
-                z_mm=z_val,
-                track_id=d.track_id,
-                aksi="AMBIL",
-            )
-        time.sleep(0.2)  # Beri waktu background thread mengirim payload
 
     annotate(
         frame,
@@ -136,7 +118,6 @@ def run_image(
         roi_active=detector.roi is not None,
         show_persen=show_persen,
         warna_kelas=warna_kelas,
-        middleware_active=bool(middleware_url),
     )
     out = OUTPUT_DIR / f"hasil_{path.stem}.jpg"
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -167,18 +148,12 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
     current_conf = detector.conf
     penstabil = Penstabil() if not args.tanpa_stabil else None
 
-    middleware_sender = MiddlewareSender(
-        base_url=args.middleware,
-        enabled=not args.no_middleware,
-    )
-
     prev, fps, last_print = time.time(), 0.0, 0.0
     print("\nKontrol Keyboard:")
     print("  [q] / [ESC] : Keluar")
     print("  [s]         : Simpan tangkapan layar (screenshot)")
     print("  [c]         : Simpan koordinat objek ke CSV")
     print("  [t]         : Toggle Object Tracking (ON/OFF)")
-    print("  [m]         : Toggle Pengiriman ke Middleware Lokal (ON/OFF)")
     print("  [f]         : Toggle Smart Filter (ON/OFF)")
     print("  [r]         : Toggle ROI Zona Kerja (ON/OFF)")
     print("  [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)")
@@ -204,20 +179,6 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if penstabil is not None:
                 detections = penstabil.update(detections)
 
-            # Kirim sinyal ke Local Middleware Server secara real-time
-            if detections and middleware_sender.enabled:
-                for d in detections:
-                    z_val = 2.0 if "koin" in d.class_name else 12.0
-                    middleware_sender.send_detection(
-                        class_name=d.class_name,
-                        confidence=d.confidence,
-                        x_mm=float(d.center[0]),
-                        y_mm=float(d.center[1]),
-                        z_mm=z_val,
-                        track_id=d.track_id,
-                        aksi="AMBIL",
-                    )
-
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
             prev = now
@@ -237,7 +198,6 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
                 show_persen=not args.tanpa_persen,
                 warna_kelas=warna_kelas_on,
                 track_active=detector.track,
-                middleware_active=middleware_sender.enabled,
             )
             cv2.imshow(WINDOW, frame)
 
@@ -252,9 +212,6 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             if key in (ord("t"), ord("T")):
                 detector.track = not detector.track
                 print(f"[Object Tracking] -> {'ON' if detector.track else 'OFF'}")
-            if key in (ord("m"), ord("M")):
-                middleware_sender.enabled = not middleware_sender.enabled
-                print(f"[Middleware Lokal] -> {'ON (Aktif)' if middleware_sender.enabled else 'OFF (Mati)'}")
             if key in (ord("f"), ord("F")):
                 smart_filter_on = not smart_filter_on
                 print(f"[Smart Filter] -> {'ON' if smart_filter_on else 'OFF'}")
@@ -290,8 +247,6 @@ def main() -> int:
     ap.add_argument("--no-show", action="store_true", help="jangan buka jendela (khusus untuk gambar)")
     ap.add_argument("--no-smart-filter", action="store_true", help="matikan filter geometri cerdas")
     ap.add_argument("--no-track", action="store_true", help="matikan object tracking real-time (ByteTrack)")
-    ap.add_argument("--middleware", default="http://localhost:8000", help="URL server middleware lokal (default: http://localhost:8000)")
-    ap.add_argument("--no-middleware", action="store_true", help="matikan pengiriman koordinat ke middleware lokal")
     ap.add_argument("--tanpa-stabil", action="store_true", help="matikan penstabil suara-terbanyak multi-frame")
     ap.add_argument("--tanpa-persen", action="store_true", help="jangan tampilkan persentase confidence di label")
     ap.add_argument("--warna-kelas", action="store_true", help="bedakan warna kotak tiap kelas (koin=emas, tutup_botol=cyan)")
@@ -320,8 +275,7 @@ def main() -> int:
         print(exc)
         return 1
     print(f"Model: {args.weights} | device: {detector.device} | conf: {args.conf} | "
-          f"filter: {'ON' if detector.smart_filter else 'OFF'} | track: {'ON' if detector.track else 'OFF'} | "
-          f"middleware: {'ON (' + args.middleware + ')' if not args.no_middleware else 'OFF'}")
+          f"filter: {'ON' if detector.smart_filter else 'OFF'} | track: {'ON' if detector.track else 'OFF'}")
 
     source = parse_source(args.source)
     if isinstance(source, str) and Path(source).suffix.lower() in IMAGE_EXTS:
@@ -331,7 +285,6 @@ def main() -> int:
             show=not args.no_show,
             show_persen=not args.tanpa_persen,
             warna_kelas=args.warna_kelas,
-            middleware_url=args.middleware if not args.no_middleware else None,
         )
     return run_stream(detector, source, args)
 
