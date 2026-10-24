@@ -67,7 +67,7 @@ class SortirVisionAPI:
         weights: Path | str = DEFAULT_WEIGHTS,
         calib_path: Path | str = DEFAULT_CALIB_PATH,
         conf: float = 0.30,
-        imgsz: int = 1280,
+        imgsz: int = 640,
         width: int = 1280,
         height: int = 720,
         roi: tuple[int, int, int, int] | None = None,

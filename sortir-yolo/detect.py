@@ -238,7 +238,7 @@ def main() -> int:
     ap.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     ap.add_argument("--source", default="0", help="nomor kamera (0,1,..) atau path gambar/video")
     ap.add_argument("--conf", type=float, default=0.30, help="threshold confidence (default: 0.30)")
-    ap.add_argument("--imgsz", type=int, default=1280, help="resolusi input AI (default: 1280 agar koin kecil dan tutup botol tajam)")
+    ap.add_argument("--imgsz", type=int, default=640, help="resolusi input AI (default: 640 sesuai resolusi model latih Colab)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--width", type=int, default=1280, help="lebar kamera yang diminta")
     ap.add_argument("--height", type=int, default=720, help="tinggi kamera yang diminta")
