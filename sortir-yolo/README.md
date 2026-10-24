@@ -83,6 +83,23 @@ python capture.py --source 1   # Webcam USB eksternal / iPhone
 
 ---
 
+### 5. Pembersih Otomatis Foto Blur / Buram (`bersihkan_dataset_blur.py`)
+
+Setelah selesai mengambil foto, jalankan filter kualitas ini untuk menyingkirkan foto yang buram akibat gerakan tangan cepat (*motion blur*):
+
+```bash
+# 1. Cek dulu berapa foto blur tanpa memindahkan file (Simulasi):
+python bersihkan_dataset_blur.py --dry-run
+
+# 2. Pindahkan foto blur ke folder karantina 'datasets_raw/sampah_blur/' (Aman):
+python bersihkan_dataset_blur.py
+
+# 3. Atau langsung hapus permanen foto blur:
+python bersihkan_dataset_blur.py --delete
+```
+
+---
+
 ## 🔄 Alur Kerja Sistem (Pipeline Vision)
 
 Sistem pengolahan visi ini bekerja dalam 5 tahapan terpadu:
