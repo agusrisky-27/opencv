@@ -1,0 +1,28 @@
+{
+  "deskripsi": "Konfigurasi Kalibrasi Koordinat OpenCV ke Robot RNV3 (Kamera & Robot Berseberangan)",
+  "berseberangan": true,
+  "flip_x": true,
+  "flip_y": false,
+  "scale_x_mm_per_px": 0.35,
+  "scale_y_mm_per_px": 0.35,
+  "origin_robot_x_mm": 0.0,
+  "origin_robot_y_mm": 200.0,
+  "z_heights": {
+    "koin": 2.0,
+    "tutup_botol": 12.0
+  },
+  "drop_coordinates": {
+    "koin": {
+      "x": -150.0,
+      "y": 100.0,
+      "z": 45.0
+    },
+    "tutup_botol": {
+      "x": 150.0,
+      "y": 100.0,
+      "z": 55.0
+    }
+  },
+  "calibration_points": [],
+  "homography_matrix": null
+}
