@@ -30,11 +30,12 @@ from src.autolabel import (
     save_preview_grid,
     write_yolo_label,
 )
-from src.config import CLASS_NAMES, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR
+from src.config import CLASS_NAMES, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR, get_capture_dir
 
 PROMPTS = {
     "koin": ["coin", "round metal coin", "rupiah coin", "money"],
     "tutup_botol": ["bottle cap", "plastic cap", "bottle lid"],
+    "charger": ["phone charger", "wall adapter", "power adapter", "usb charger", "charger"],
 }
 
 
@@ -53,8 +54,9 @@ def main() -> int:
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
 
-    if not OWN_RAW_DIR.is_dir():
-        print(f"{OWN_RAW_DIR} belum ada. Jalankan dulu: python extra_capture_data.py")
+    has_dirs = any(get_capture_dir(n).is_dir() for n in CLASS_NAMES) or OWN_RAW_DIR.is_dir()
+    if not has_dirs:
+        print("Folder foto belum ada. Jalankan dulu: python capture.py")
         return 1
 
     if OWN_DIR.exists():
@@ -66,7 +68,9 @@ def main() -> int:
     tiles = []
 
     for class_id, name in enumerate(CLASS_NAMES):
-        folder = OWN_RAW_DIR / name
+        folder = get_capture_dir(name)
+        if not folder.is_dir() or not any(folder.iterdir()):
+            folder = OWN_RAW_DIR / name
         if not folder.is_dir():
             continue
         files = sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_EXTS)

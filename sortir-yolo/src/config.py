@@ -15,20 +15,37 @@ MERGED_DIR = ROOT / "dataset_gabungan"   # dataset final untuk training
 MODELS_DIR = ROOT / "models"             # tempat best.pt untuk dipakai deteksi
 OUTPUT_DIR = ROOT / "outputs"            # screenshot, csv, preview
 RUNS_DIR = ROOT / "runs"                 # hasil training Ultralytics
-OWN_RAW_DIR = RAW_DIR / "foto_sendiri_mentah"  # foto sendiri per kelas (hasil extra_capture_data.py)
+OWN_RAW_DIR = RAW_DIR / "foto_sendiri_mentah"  # foto sendiri per kelas (arsip lama)
 OWN_DIR = RAW_DIR / "data_sendiri"       # foto sendiri + label YOLO (hasil extra_autolabel_own.py)
+
+# Folder penyimpanan foto manual per kelas (Struktur Terpisah & Bersih)
+MANUAL_CAPTURE_DIRS: dict[str, Path] = {
+    "koin": RAW_DIR / "koin_capture_manual",
+    "tutup_botol": RAW_DIR / "tutup_botol_capture_manual",
+    "charger": RAW_DIR / "charger_capture_manual",
+}
+LATAR_CAPTURE_DIR: Path = RAW_DIR / "latar_negatif_manual"
+
+
+def get_capture_dir(class_name: str) -> Path:
+    """Mendapatkan path folder capture manual untuk kelas atau latar tertentu."""
+    if class_name in ("latar", "negatif", "background"):
+        return LATAR_CAPTURE_DIR
+    return MANUAL_CAPTURE_DIRS.get(class_name, RAW_DIR / f"{class_name}_capture_manual")
+
 
 DEFAULT_WEIGHTS = MODELS_DIR / "best.pt"
 DEFAULT_CALIB_PATH = ROOT / "robot_calib.json"
 DEFAULT_TARGET_JSON = OUTPUT_DIR / "target_robot.json"
 
-# 2 kelas final (urutan = ID kelas 0, 1). JANGAN diubah setelah training.
-CLASS_NAMES: list[str] = ["koin", "tutup_botol"]
+# 3 kelas sortir (urutan = ID kelas 0, 1, 2).
+CLASS_NAMES: list[str] = ["koin", "tutup_botol", "charger"]
 
 # Teks yang tampil di layar untuk tiap kelas
 DISPLAY_LABELS: dict[str, str] = {
     "koin": "Koin",
     "tutup_botol": "Tutup Botol",
+    "charger": "Charger",
 }
 
 # Warna kotak default (BGR). Merah sesuai standar proyek.
@@ -38,6 +55,7 @@ BOX_COLOR = (0, 0, 255)
 CLASS_COLORS: dict[str, tuple[int, int, int]] = {
     "koin": (0, 215, 255),         # Emas / Kuning (BGR)
     "tutup_botol": (255, 140, 0),  # Biru / Cyan (BGR)
+    "charger": (0, 255, 0),        # Hijau Terang (BGR)
 }
 
 # ==============================================================================
@@ -54,6 +72,11 @@ DROP_COORDINATES: dict[str, dict[str, float]] = {
         "x": 150.0,   # // ISI KOORDINAT X WADAH TUTUP BOTOL DI SINI (misal: 150.0 mm)
         "y": 100.0,   # // ISI KOORDINAT Y WADAH TUTUP BOTOL DI SINI (misal: 100.0 mm)
         "z": 55.0,    # // ISI KOORDINAT Z WADAH TUTUP BOTOL DI SINI (ketinggian aman drop)
+    },
+    "charger": {
+        "x": 0.0,     # // ISI KOORDINAT X WADAH CHARGER DI SINI (misal: 0.0 mm)
+        "y": 180.0,   # // ISI KOORDINAT Y WADAH CHARGER DI SINI (misal: 180.0 mm)
+        "z": 70.0,    # // ISI KOORDINAT Z WADAH CHARGER DI SINI (ketinggian aman drop)
     },
 }
 

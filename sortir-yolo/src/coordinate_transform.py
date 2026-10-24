@@ -79,7 +79,7 @@ class RobotCoordinateTransformer:
         self.scale_y = scale_y_mm_per_px
         self.origin_x = origin_robot_x_mm
         self.origin_y = origin_robot_y_mm
-        self.z_heights = z_heights or {"koin": 2.0, "tutup_botol": 12.0}
+        self.z_heights = z_heights or {"koin": 2.0, "tutup_botol": 12.0, "charger": 28.0}
         self.drop_coords = dict(DROP_COORDINATES)
         self.homography_matrix: np.ndarray | None = None
         self.calibration_points: list[dict[str, Any]] = []

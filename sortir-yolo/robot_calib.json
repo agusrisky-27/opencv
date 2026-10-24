@@ -9,7 +9,8 @@
   "origin_robot_y_mm": 200.0,
   "z_heights": {
     "koin": 2.0,
-    "tutup_botol": 12.0
+    "tutup_botol": 12.0,
+    "charger": 28.0
   },
   "drop_coordinates": {
     "koin": {
@@ -21,6 +22,11 @@
       "x": 150.0,
       "y": 100.0,
       "z": 55.0
+    },
+    "charger": {
+      "x": 0.0,
+      "y": 180.0,
+      "z": 70.0
     }
   },
   "calibration_points": [],

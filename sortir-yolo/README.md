@@ -66,19 +66,20 @@ Wajib dijalankan setiap kali baru membuka jendela terminal baru:
 
 ### 4. Mengambil Foto Dataset Sendiri (`capture.py`)
 
-Gunakan fitur ini jika Anda ingin menambah foto koin atau tutup botol baru dari kamera Anda untuk meningkatkan akurasi:
+Gunakan fitur ini untuk mengambil foto objek secara mandiri lewat kamera:
 ```bash
-python capture.py
+python capture.py --source 0   # Webcam MacBook
+python capture.py --source 1   # Webcam USB eksternal / iPhone
 ```
-*(Otomatis menggunakan webcam index 1 secara default)*.
 
-#### 🎮 Tombol Pintas Auto-Capture:
-1. Tekan **`1`** pada keyboard $\to$ Layar menampilkan `Target: Koin`.
-2. Tekan **`2`** pada keyboard $\to$ Layar menampilkan `Target: Tutup Botol`.
-3. Tekan **`a`** pada keyboard $\to$ **Mulai Auto-Capture** (kamera akan otomatis memotret tiap 0.4 detik). Gerakkan objek/kamera perlahan untuk memvariasikan sudut dan jarak.
-4. Tekan **`a`** lagi $\to$ Menghentikan pemotretan otomatis.
-5. Tekan **`SPASI`** $\to$ Ambil 1 foto manual.
-6. Tekan **`q`** $\to$ Selesai dan keluar. Foto otomatis tersimpan rapi di folder `datasets_raw/foto_sendiri_mentah/`.
+#### 🎮 Tombol Pintas & Struktur Folder Otomatis:
+1. Tekan **`1`** $\to$ `Target: Koin` (tersimpan ke `datasets_raw/koin_capture_manual/`)
+2. Tekan **`2`** $\to$ `Target: Tutup Botol` (tersimpan ke `datasets_raw/tutup_botol_capture_manual/`)
+3. Tekan **`3`** $\to$ `Target: Charger` (tersimpan ke `datasets_raw/charger_capture_manual/`)
+4. Tekan **`0`** $\to$ `Target: Latar Negatif` (tersimpan ke `datasets_raw/latar_negatif_manual/`)
+5. Tekan **`SPASI`** $\to$ Ambil 1 foto manual
+6. Tekan **`a`** $\to$ **Auto-Capture ON/OFF** (memotret tiap 0.4 detik otomatis)
+7. Tekan **`q`** atau **`ESC`** $\to$ Selesai dan keluar (menampilkan rekap total foto)
 
 ---
 
