@@ -77,6 +77,32 @@ def box_from_background(
     return ((x + bw / 2) / sw, (y + bh / 2) / sh, bw / sw, bh / sh)
 
 
+def segment_charger_box(img_bgr: np.ndarray) -> NormBox | None:
+    """Segmentasi khusus kepala charger (benda terang pada alas gelap atau sebaliknya)."""
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Coba beberapa ambang batas kecerahan
+    for thr in [130, 115, 145, 100]:
+        _, mask = cv2.threshold(blurred, thr, 255, cv2.THRESH_BINARY)
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid = []
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if (w * h * 0.01) < area < (w * h * 0.80):
+                x, y, bw, bh = cv2.boundingRect(cnt)
+                if bw < w * 0.92 and bh < h * 0.92:
+                    valid.append((area, x, y, bw, bh))
+        if valid:
+            valid.sort(key=lambda item: item[0], reverse=True)
+            _, x, y, bw, bh = valid[0]
+            return ((x + bw / 2) / w, (y + bh / 2) / h, bw / w, bh / h)
+    return None
+
+
 class WorldLabeler:
     """Label otomatis memakai YOLO-World (zero-shot, berbasis teks)."""
 

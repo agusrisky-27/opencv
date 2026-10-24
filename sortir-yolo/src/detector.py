@@ -302,21 +302,33 @@ class Detector:
             if self.roi is not None and not point_in_roi(center, self.roi):
                 continue
 
-            # 2. Filter Geometri Cerdas (aspek rasio, ukuran, batas area)
-            if use_filter and not validate_geometry(
-                bbox, width, height,
-                min_ar=self.min_ar,
-                max_ar=self.max_ar,
-                min_size_px=self.min_size_px,
-                max_area_frac=self.max_area_frac,
-            ):
-                continue
-
             class_id = int(box.cls[0])
-            class_name = str(names[class_id])
+            class_name = str(names.get(class_id, class_id))
             confidence = float(box.conf[0])
             label = display_label(class_name)
             catatan = ""
+
+            # 2. Filter Geometri Cerdas (aspek rasio, ukuran, batas area)
+            if use_filter:
+                if class_name == "charger":
+                    # Charger berbentuk balok/persegi panjang: toleransi rasio lebih leluasa
+                    if not validate_geometry(
+                        bbox, width, height,
+                        min_ar=0.25,
+                        max_ar=4.00,
+                        min_size_px=self.min_size_px,
+                        max_area_frac=0.55,
+                    ):
+                        continue
+                else:
+                    if not validate_geometry(
+                        bbox, width, height,
+                        min_ar=self.min_ar,
+                        max_ar=self.max_ar,
+                        min_size_px=self.min_size_px,
+                        max_area_frac=self.max_area_frac,
+                    ):
+                        continue
 
             track_id: int | None = None
             if hasattr(box, "id") and box.id is not None:

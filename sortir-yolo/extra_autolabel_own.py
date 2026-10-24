@@ -28,9 +28,19 @@ from src.autolabel import (
     box_from_background,
     draw_preview,
     save_preview_grid,
+    segment_charger_box,
     write_yolo_label,
 )
-from src.config import CLASS_NAMES, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR, OWN_DIR, OWN_RAW_DIR, get_capture_dir
+from src.config import (
+    CLASS_NAMES,
+    DEFAULT_WEIGHTS,
+    IMAGE_EXTS,
+    LATAR_CAPTURE_DIR,
+    OUTPUT_DIR,
+    OWN_DIR,
+    OWN_RAW_DIR,
+    get_capture_dir,
+)
 
 PROMPTS = {
     "koin": ["coin", "round metal coin", "rupiah coin", "money"],
@@ -90,8 +100,12 @@ def main() -> int:
             if img is None:
                 continue
 
-            if args.method == "model":
+            if name == "charger":
+                box = segment_charger_box(img)
+            elif args.method == "model":
                 box = labeler.box(img, target_class=name)
+                if box is None:
+                    box = box_from_background(img)
             elif args.method == "world":
                 box = labeler.box(img)
             else:
@@ -109,6 +123,22 @@ def main() -> int:
             shutil.copy2(path, OWN_DIR / split / "images" / out_name)
             write_yolo_label(OWN_DIR / split / "labels" / f"{Path(out_name).stem}.txt", class_id, box)
             stats[name]["ok"] += 1
+
+    # Proses sampel negatif (Latar Kosong / Meja / Tangan) dengan empty label (.txt kosong)
+    latar_files = []
+    if LATAR_CAPTURE_DIR.is_dir():
+        latar_files = sorted(p for p in LATAR_CAPTURE_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTS)
+    if latar_files:
+        stats["latar"] = {"ok": 0, "lewat": 0}
+        for i, path in enumerate(latar_files):
+            split = "valid" if (i // args.block) % args.valid_every == args.valid_every - 1 else "train"
+            (OWN_DIR / split / "images").mkdir(parents=True, exist_ok=True)
+            (OWN_DIR / split / "labels").mkdir(parents=True, exist_ok=True)
+            out_name = f"latar__{path.name}"
+            shutil.copy2(path, OWN_DIR / split / "images" / out_name)
+            # Standar YOLO: buat file teks kosong (0 byte) untuk background negative sample
+            (OWN_DIR / split / "labels" / f"{Path(out_name).stem}.txt").write_text("", encoding="utf-8")
+            stats["latar"]["ok"] += 1
 
     if not stats:
         print("Tidak ada foto ditemukan di", OWN_RAW_DIR)
