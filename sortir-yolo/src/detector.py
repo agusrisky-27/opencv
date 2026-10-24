@@ -355,6 +355,13 @@ class Detector:
             ):
                 continue
 
+            # 6. Verifikasi Charger Asli (Tolak jika objek adalah wajah manusia di depan webcam)
+            if use_filter and class_name == "charger":
+                x1, y1, x2, y2 = bbox
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0 and is_human_skin_face(crop, width, height):
+                    continue
+
             detections.append(
                 Detection(
                     class_id=class_id,

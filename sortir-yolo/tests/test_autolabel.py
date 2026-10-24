@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from src.autolabel import box_from_background
+from src.autolabel import box_from_background, segment_charger_box
 
 
 def plain_image(bg=(235, 235, 235)):
@@ -32,3 +32,32 @@ def test_latar_ramai_ditolak():
 
 def test_gambar_kosong_tanpa_benda():
     assert box_from_background(plain_image()) is None
+
+
+def test_segment_charger_box_putih_di_latar_gelap():
+    # Latar gelap (conveyor)
+    img = np.full((720, 1280, 3), 35, dtype=np.uint8)
+    # Charger putih kotak di tengah
+    cv2.rectangle(img, (500, 200), (780, 520), (220, 220, 220), -1)
+    box = segment_charger_box(img)
+    assert box is not None
+    cx, cy, w, h = box
+    assert abs(cx - 640 / 1280) < 0.05
+    assert abs(cy - 360 / 720) < 0.05
+    assert abs(w - 280 / 1280) < 0.05
+    assert abs(h - 320 / 720) < 0.05
+
+
+def test_segment_charger_box_hitam_di_latar_terang():
+    # Latar terang (meja/kertas putih)
+    img = np.full((720, 1280, 3), 210, dtype=np.uint8)
+    # Charger hitam di tengah
+    cv2.rectangle(img, (450, 250), (830, 470), (30, 30, 30), -1)
+    box = segment_charger_box(img)
+    assert box is not None
+    cx, cy, w, h = box
+    assert abs(cx - 640 / 1280) < 0.05
+    assert abs(cy - 360 / 720) < 0.05
+    assert abs(w - 380 / 1280) < 0.05
+    assert abs(h - 220 / 720) < 0.05
+
