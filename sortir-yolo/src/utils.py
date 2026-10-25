@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Protocol
@@ -168,7 +169,11 @@ class Penstabil:
                 prev_box = t["bbox"]
                 # Penghalusan posisi kotak (exponential moving average) agar tidak bergetar saat kamera goyang
                 cur_box = d.bbox
-                s = self.smooth_factor
+                cur_c = compute_center(cur_box)
+                prev_c = compute_center(prev_box)
+                dist_move = math.hypot(cur_c[0] - prev_c[0], cur_c[1] - prev_c[1])
+                # Jika benda sedang bergerak cepat di conveyor / digerakkan tangan, snap langsung tanpa lag
+                s = 1.0 if dist_move > 15.0 else self.smooth_factor
                 smoothed_bbox = (
                     int(round(s * cur_box[0] + (1.0 - s) * prev_box[0])),
                     int(round(s * cur_box[1] + (1.0 - s) * prev_box[1])),
@@ -176,7 +181,6 @@ class Penstabil:
                     int(round(s * cur_box[3] + (1.0 - s) * prev_box[3])),
                 )
                 smoothed_center = compute_center(smoothed_bbox)
-                prev_c = compute_center(prev_box)
                 vx = smoothed_center[0] - prev_c[0]
                 vy = smoothed_center[1] - prev_c[1]
                 t["vx"] = 0.6 * vx + 0.4 * t.get("vx", 0.0)

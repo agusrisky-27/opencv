@@ -134,7 +134,7 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
     is_network = isinstance(source, str) and (
         source.startswith("http://") or source.startswith("https://") or source.startswith("rtsp://")
     )
-    cam_cls = ThreadedCamera if (args.threaded or is_network) else Camera
+    cam_cls = Camera if args.no_threaded else ThreadedCamera
     try:
         cam = cam_cls(source, args.width, args.height).open(auto_fallback=True)
     except CameraError as exc:
@@ -255,7 +255,7 @@ def main() -> int:
     ap.add_argument("--max-ar", type=float, default=1.85, help="aspek rasio w/h maksimum (default: 1.85)")
     ap.add_argument("--max-area", type=float, default=0.40, help="fraksi luas maksimal terhadap frame (default: 0.40)")
     ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
-    ap.add_argument("--threaded", action="store_true", help="gunakan background thread agar capture zero-latency (otomatis aktif untuk stream URL)")
+    ap.add_argument("--no-threaded", action="store_true", help="matikan background thread capture zero-latency")
     args = ap.parse_args()
 
     try:

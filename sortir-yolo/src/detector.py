@@ -134,17 +134,27 @@ def tutup_berwarna(frame: np.ndarray, bbox: tuple[int, int, int, int], min_frac:
     crop = frame[y1:y2, x1:x2]
     if crop.size == 0:
         return False
-    # Tolak jika objek adalah wajah manusia agar tidak dikira tutup botol
-    if is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
+    # Tolak jika objek adalah wajah manusia atau tersentuh jari/kulit manusia
+    if is_human_skin_face(crop, frame.shape[1], frame.shape[0]) or _cek_warna_kulit(crop) > 0.15:
         return False
 
     c = ciri_warna(frame, bbox)
     if c is None or c["frac_pekat"] < min_frac:
         return False
+
+    # Plastik harus memiliki saturasi tinggi (> 0.55)
+    if c["sat"] < 0.55:
+        return False
+
     # Koin kuningan emas Rp 1000 / Rp 500 berada di hue 15..60 (kuning oranye keemasan)
-    # Plastik pekat harus memiliki saturasi sangat tinggi (> 0.65) agar koin kuningan kusam tidak tertukar
+    # Plastik pekat harus memiliki saturasi sangat tinggi (> 0.68) agar koin kuningan kusam tidak tertukar
     if 15.0 <= c["hue"] <= 60.0:
+        return c["sat"] > 0.68
+
+    # Untuk warna merah/oranye dekat warna kulit (hue < 15 atau hue > 345), wajib saturasi sangat tinggi
+    if c["hue"] < 15.0 or c["hue"] > 345.0:
         return c["sat"] > 0.65
+
     return True
 
 
@@ -337,9 +347,9 @@ class Detector:
                 except (IndexError, TypeError, ValueError):
                     track_id = None
 
-            # 3. Koreksi warna: jika objek berwarna plastik pekat (biru, hijau, merah, dll.), jadikan tutup_botol
-            if (self.cek_warna and class_name == "koin" and "tutup_botol" in name_to_id
-                    and tutup_berwarna(frame, bbox)):
+            # 3. Koreksi warna: hanya jika filter aktif, koin ragu (conf < 0.55), dan benda jelas plastik pekat
+            if (use_filter and self.cek_warna and class_name == "koin" and confidence < 0.55
+                    and "tutup_botol" in name_to_id and tutup_berwarna(frame, bbox)):
                 class_id = name_to_id["tutup_botol"]
                 class_name = "tutup_botol"
                 label = display_label("tutup_botol")
