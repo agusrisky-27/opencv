@@ -147,4 +147,24 @@ def test_verifikasi_tutup_botol_asli_tolak_wajah():
     assert verifikasi_tutup_botol_asli(frame, (400, 400, 460, 460), 1280, 720) is True
 
 
+def test_refine_charger_vacuum_center():
+    from src.detector import refine_charger_vacuum_center
+    # Buat charger sintetis: kepala di atas (putih pekat), dua kaki colokan di bawah
+    crop = np.zeros((200, 100, 3), dtype=np.uint8)
+    # Kepala (y: 0..130): balok lebar putih
+    crop[0:130, 10:90] = 240
+    # Steker/pin logam (y: 130..200): dua kaki tipis
+    crop[130:200, 25:35] = 200
+    crop[130:200, 65:75] = 200
+
+    bbox = (100, 100, 200, 300)
+    # Titik tengah standar adalah 100 + 100 = 200
+    std_cy = 200
+    cx, cy = refine_charger_vacuum_center(crop, bbox)
+    # Titik hisap vacum harus bergeser ke atas menuju kepala charger (cy < std_cy)
+    assert cx == 150
+    assert cy < std_cy
+    assert 160 <= cy <= 180
+
+
 

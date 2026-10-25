@@ -226,6 +226,48 @@ def verifikasi_tutup_botol_asli(
     return True
 
 
+def refine_charger_vacuum_center(crop: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[int, int]:
+    """Hitung titik tengah khusus kepala/badan datar charger (titik ideal vacuum suction robot).
+    
+    Menghindari ujung kaki colokan/steker logam dan menempatkan koordinat tepat di
+    tengah-tengah bidang datar plastik kepala charger agar karet hisap vacum menempel kedap udara.
+    """
+    x1, y1, x2, y2 = bbox
+    w, h = x2 - x1, y2 - y1
+    std_cx, std_cy = (x1 + x2) // 2, (y1 + y2) // 2
+    if w < 25 or h < 25 or crop is None or crop.size == 0 or crop.shape[0] < 8 or crop.shape[1] < 8:
+        return std_cx, std_cy
+
+    ch, cw = crop.shape[:2]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    border_mean = (otsu[0, :].mean() + otsu[-1, :].mean() + otsu[:, 0].mean() + otsu[:, -1].mean()) / 4.0
+    mask = cv2.bitwise_not(otsu) if border_mean > 127 else otsu
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+    if h >= w * 1.10:
+        mid = ch // 2
+        top_half_density = float(np.mean(mask[:mid, :]))
+        bot_half_density = float(np.mean(mask[mid:, :]))
+        if abs(top_half_density - bot_half_density) > 10.0:
+            bias = 0.36 if top_half_density > bot_half_density else 0.64
+            target_cy = int(y1 + bias * h)
+            return std_cx, target_cy
+    elif w >= h * 1.10:
+        mid = cw // 2
+        left_half_density = float(np.mean(mask[:, :mid]))
+        right_half_density = float(np.mean(mask[:, mid:]))
+        if abs(left_half_density - right_half_density) > 10.0:
+            bias = 0.36 if left_half_density > right_half_density else 0.64
+            target_cx = int(x1 + bias * w)
+            return target_cx, std_cy
+
+    return std_cx, std_cy
+
+
 class Detector:
     """Muat model sekali, lalu panggil detect(frame) berulang kali."""
 
@@ -371,6 +413,12 @@ class Detector:
                 crop = frame[y1:y2, x1:x2]
                 if crop.size > 0 and is_human_skin_face(crop, width, height):
                     continue
+
+            # 7. Titik hisap khusus kepala charger (titik ideal vacuum suction robot)
+            if class_name == "charger":
+                bx1, by1, bx2, by2 = bbox
+                charger_crop = frame[by1:by2, bx1:bx2]
+                center = refine_charger_vacuum_center(charger_crop, bbox)
 
             detections.append(
                 Detection(
