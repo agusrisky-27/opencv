@@ -23,7 +23,20 @@ import cv2
 import numpy as np
 
 from src.camera import Camera, CameraError, ThreadedCamera, parse_source
-from src.config import BOX_COLOR, CLASS_COLORS, DEFAULT_WEIGHTS, IMAGE_EXTS, OUTPUT_DIR
+from src.config import (
+    BOX_COLOR,
+    CLASS_COLORS,
+    DEFAULT_CALIB_PATH,
+    DEFAULT_TARGET_JSON,
+    DEFAULT_WEIGHTS,
+    IMAGE_EXTS,
+    OUTPUT_DIR,
+)
+from src.coordinate_transform import (
+    RobotCoordinateTransformer,
+    choose_best_target,
+    export_target_json,
+)
 from src.detector import Detection, Detector
 from src.utils import (
     Penstabil,
@@ -98,6 +111,7 @@ def run_image(
     show: bool,
     show_persen: bool = True,
     warna_kelas: bool = False,
+    transformer: RobotCoordinateTransformer | None = None,
 ) -> int:
     frame = cv2.imread(str(path))
     if frame is None:
@@ -107,6 +121,24 @@ def run_image(
     print_detections(detections)
     if not detections:
         print("Tidak ada objek terdeteksi (semua disaring atau tidak ada objek).")
+
+    if transformer is not None:
+        h, w = frame.shape[:2]
+        robot_targets = [
+            transformer.to_robot_target(
+                class_name=d.class_name,
+                label=d.label,
+                confidence=d.confidence,
+                pixel_center=d.center,
+                frame_width=w,
+                frame_height=h,
+                track_id=d.track_id,
+                catatan=d.catatan,
+            )
+            for d in detections
+        ]
+        best_t = choose_best_target(robot_targets, roi=detector.roi)
+        export_target_json(best_t, robot_targets, DEFAULT_TARGET_JSON)
 
     annotate(
         frame,
@@ -130,7 +162,12 @@ def run_image(
     return 0
 
 
-def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) -> int:
+def run_stream(
+    detector: Detector,
+    source: int | str,
+    args: argparse.Namespace,
+    transformer: RobotCoordinateTransformer | None = None,
+) -> int:
     is_network = isinstance(source, str) and (
         source.startswith("http://") or source.startswith("https://") or source.startswith("rtsp://")
     )
@@ -178,6 +215,23 @@ def run_stream(detector: Detector, source: int | str, args: argparse.Namespace) 
             detections = detector.detect(frame, apply_smart_filter=smart_filter_on)
             if penstabil is not None:
                 detections = penstabil.update(detections)
+
+            if transformer is not None:
+                robot_targets = [
+                    transformer.to_robot_target(
+                        class_name=d.class_name,
+                        label=d.label,
+                        confidence=d.confidence,
+                        pixel_center=d.center,
+                        frame_width=w,
+                        frame_height=h,
+                        track_id=d.track_id,
+                        catatan=d.catatan,
+                    )
+                    for d in detections
+                ]
+                best_t = choose_best_target(robot_targets, roi=roi_coords if roi_active else None)
+                export_target_json(best_t, robot_targets, DEFAULT_TARGET_JSON)
 
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
@@ -256,7 +310,12 @@ def main() -> int:
     ap.add_argument("--max-area", type=float, default=0.40, help="fraksi luas maksimal terhadap frame (default: 0.40)")
     ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
     ap.add_argument("--no-threaded", action="store_true", help="matikan background thread capture zero-latency")
+    ap.add_argument("--no-robot-export", action="store_true", help="jangan ekspor outputs/target_robot.json secara real-time")
     args = ap.parse_args()
+
+    transformer = None
+    if not args.no_robot_export:
+        transformer = RobotCoordinateTransformer(config_path=DEFAULT_CALIB_PATH)
 
     try:
         detector = Detector(
@@ -285,8 +344,9 @@ def main() -> int:
             show=not args.no_show,
             show_persen=not args.tanpa_persen,
             warna_kelas=args.warna_kelas,
+            transformer=transformer,
         )
-    return run_stream(detector, source, args)
+    return run_stream(detector, source, args, transformer=transformer)
 
 
 if __name__ == "__main__":
