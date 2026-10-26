@@ -77,21 +77,82 @@ def box_from_background(
     return ((x + bw / 2) / sw, (y + bh / 2) / sh, bw / sw, bh / sh)
 
 
-def segment_charger_box(img_bgr: np.ndarray) -> NormBox | None:
-    """Segmentasi universal kepala charger (Mendukung charger putih/terang maupun hitam/gelap).
-    
+def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox | None:
+    """Segmentasi universal kepala charger (Mendukung conveyor hijau kantor, alas hitam, maupun meja terang).
+
     Bekerja adaptif:
-    - Jika latar gelap (alas hitam): mencari objek terang (charger putih/warna)
-    - Jika latar terang (meja/kertas putih): mencari objek gelap (charger hitam/abu-abu)
-    - Fallback ke deteksi tepi kontur (Canny Edge) jika kontras tipis.
+    - Jika terdeteksi conveyor hijau: mencari objek charger putih/terang di atas belt hijau,
+      menghindari laptop, rel konveyor, dan pantulan meja di tepi frame.
+    - Jika latar gelap (alas hitam): mencari objek terang (charger putih/warna).
+    - Jika latar terang (meja/kertas putih): mencari objek gelap (charger hitam/abu-abu).
+    - Fallback ke model YOLO jika tersedia dan segmentasi CV terhalang.
     """
     h, w = img_bgr.shape[:2]
     if h < 16 or w < 16:
         return None
+
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+
+    # 1. Deteksi konveyor hijau
+    green = cv2.inRange(hsv, (30, 25, 20), (95, 255, 255))
+    green_pct = np.count_nonzero(green) / (w * h)
+
+    if green_pct > 0.08:
+        # MODE CONVEYOR HIJAU (Kantor)
+        ycrcb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2YCrCb)
+        skin = (ycrcb[:, :, 1] >= 133) & (ycrcb[:, :, 1] <= 173) & (ycrcb[:, :, 2] >= 77) & (ycrcb[:, :, 2] <= 127)
+        is_non_green = cv2.bitwise_not(green)
+
+        # Charger putih/terang: saturasi rendah, brightness cukup, bukan hijau, bukan kulit
+        white = (hsv[:, :, 1] < 60) & (hsv[:, :, 2] > 125) & (is_non_green > 0) & (~skin)
+        pad = 12
+        white_inner = np.zeros((h, w), dtype=np.uint8)
+        white_inner[pad : h - pad, pad : w - pad] = white[pad : h - pad, pad : w - pad]
+
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+        closed = cv2.morphologyEx(white_inner, cv2.MORPH_CLOSE, k)
+        cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid = []
+        for c in cnts:
+            a = cv2.contourArea(c)
+            if a < 10000 or a > 100000:
+                continue
+            x, y, bw, bh = cv2.boundingRect(c)
+            if x <= pad + 1 or y <= pad + 1 or (x + bw) >= (w - pad - 1) or (y + bh) >= (h - pad - 1):
+                continue
+            aspect = bw / max(1, bh)
+            if not (0.35 < aspect < 2.8 and 180 < bw < 580 and 140 < bh < 480):
+                continue
+            box_skin = skin[y : y + bh, x : x + bw]
+            if np.count_nonzero(box_skin) / max(1, box_skin.size) >= 0.22:
+                continue
+            valid.append((a, x, y, bw, bh))
+
+        if valid:
+            valid.sort(key=lambda item: item[0], reverse=True)
+            _, x, y, bw, bh = valid[0]
+            return ((x + bw / 2) / w, (y + bh / 2) / h, bw / w, bh / h)
+
+        # Fallback ke model YOLO jika tersedia
+        if yolo_model is not None:
+            try:
+                res = yolo_model.predict(img_bgr, conf=0.35, verbose=False)[0]
+                charger_boxes = [b for b in res.boxes if yolo_model.names.get(int(b.cls[0])) == "charger"]
+                if charger_boxes:
+                    b = max(charger_boxes, key=lambda item: float(item.conf[0]))
+                    x1, y1, x2, y2 = b.xyxy[0].tolist()
+                    bw, bh = (x2 - x1) / w, (y2 - y1) / h
+                    if 0.15 < bw < 0.55 and 0.15 < bh < 0.55:
+                        return ((x1 + x2) / 2 / w, (y1 + y2) / 2 / h, bw, bh)
+            except Exception:
+                pass
+        return None
+
+    # 2. MODE UMUM / ALAS GELAP / MEJA TERANG
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 1. Analisis warna tepi latar belakang (margin 5%)
+    # Analisis warna tepi latar belakang (margin 5%)
     t = max(2, int(0.05 * min(h, w)))
     border_pixels = np.concatenate([
         gray[:t, :].flatten(),

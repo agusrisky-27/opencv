@@ -61,3 +61,20 @@ def test_segment_charger_box_hitam_di_latar_terang():
     assert abs(w - 380 / 1280) < 0.05
     assert abs(h - 220 / 720) < 0.05
 
+
+def test_segment_charger_box_conveyor_hijau():
+    # Simulasi frame conveyor kantor dengan meja terang di atas & bawah
+    img = np.full((720, 1280, 3), (220, 220, 220), dtype=np.uint8)
+    # Belt konveyor hijau di tengah
+    img[120:580, :] = (100, 145, 110)
+    # Charger putih kotak di atas conveyor
+    cv2.rectangle(img, (480, 220), (820, 480), (240, 240, 240), -1)
+    box = segment_charger_box(img)
+    assert box is not None
+    cx, cy, w, h = box
+    assert abs(cx - 650 / 1280) < 0.05
+    assert abs(cy - 350 / 720) < 0.05
+    assert abs(w - 340 / 1280) < 0.05
+    assert abs(h - 260 / 720) < 0.05
+
+

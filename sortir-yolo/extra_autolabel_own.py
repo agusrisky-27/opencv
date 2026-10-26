@@ -101,7 +101,8 @@ def main() -> int:
                 continue
 
             if name == "charger":
-                box = segment_charger_box(img)
+                model_inst = labeler.model if (args.method == "model" and labeler is not None) else None
+                box = segment_charger_box(img, yolo_model=model_inst)
             elif args.method == "model":
                 box = labeler.box(img, target_class=name)
                 if box is None:
