@@ -169,6 +169,48 @@ def tutup_berwarna(frame: np.ndarray, bbox: tuple[int, int, int, int], min_frac:
     return True
 
 
+def is_specular_metal_coin(
+    frame: np.ndarray,
+    bbox: tuple[int, int, int, int],
+    max_sat: float = 0.20,
+    max_frac_pekat: float = 0.18,
+    min_mean_brightness: float = 135.0,
+) -> bool:
+    """True jika benda yang terdeteksi adalah koin logam yang mengalami pantulan silau lampu (specular glare).
+
+    Kasus lapangan: Koin perak di bawah sorotan lampu memantulkan cahaya cermin (overexposed),
+    menghapus kontras cetakan koin dan tampak seperti lingkaran putih/abu polos (desaturated),
+    sehingga model AI dari dataset Roboflow keliru menduga sebagai tutup botol putih.
+    Karena tutup botol riil konveyor adalah plastik berwarna pekat (sat > 0.50), objek bundar silau
+    dengan saturasi sangat rendah ini dikoreksi kembali menjadi Koin.
+    """
+    x1, y1, x2, y2 = bbox
+    w, h = x2 - x1, y2 - y1
+    if w < 15 or h < 15:
+        return False
+    ar = w / float(max(h, 1))
+    if not (0.65 <= ar <= 1.50):
+        return False
+    if max(w, h) > 230:
+        return False
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
+        return False
+
+    c = ciri_warna(frame, bbox)
+    if c is None:
+        return False
+
+    # Jika saturasi sangat rendah (achromatic / perak / putih silau) dan tidak pekat warna plastik
+    if c["sat"] < max_sat and c["frac_pekat"] < max_frac_pekat:
+        ch, cw = crop.shape[:2]
+        center_crop = crop[int(ch * 0.25):int(ch * 0.75), int(cw * 0.25):int(cw * 0.75)]
+        if center_crop.size > 0 and float(center_crop.mean()) > min_mean_brightness:
+            return True
+
+    return False
+
+
 def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int], confidence: float = 0.50) -> bool:
     """Verifikasi khusus koin: tolak kunci (ada lubang tembus gantungan), plastik abu-abu polos, dan wajah manusia."""
     x1, y1, x2, y2 = bbox
@@ -411,6 +453,14 @@ class Detector:
                 class_name = "tutup_botol"
                 label = display_label("tutup_botol")
                 catatan = "koreksi warna"
+
+            # 3b. Koreksi silau koin: jika AI menduga tutup botol, tetapi objek adalah logam monokromatik / perak silau tanpa pigmen plastik
+            elif (use_filter and self.cek_warna and class_name == "tutup_botol"
+                    and "koin" in name_to_id and is_specular_metal_coin(frame, bbox)):
+                class_id = name_to_id["koin"]
+                class_name = "koin"
+                label = display_label("koin")
+                catatan = "koreksi silau"
 
             # 4. Verifikasi Koin Asli (Tolak kunci, plastik abu-abu polos, dan wajah manusia)
             if use_filter and class_name == "koin" and not verifikasi_koin_asli(frame, bbox, confidence=confidence):

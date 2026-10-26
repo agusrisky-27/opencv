@@ -455,3 +455,27 @@ Pada pengujian langsung di konveyor fisik (rekaman jam 13:13:11 WIB), file log `
    * `choose_best_target` kini secara ketat mengembalikan `None` (`NO_TARGET`) jika tidak ada target di dalam ROI aktif, mencegah lengan robot bergerak ke koordinat berbahaya di luar batas konveyor.
 4. **Verifikasi Unit Test:**
    * Seluruh 45 unit test (100%) lolos pengujian (`pytest -q` -> `45 passed`).
+
+---
+
+## 11. PENYELESAIAN BUG KOIN SILAU DIKIRA TUTUP BOTOL (26 OKTOBER 2026, 15:35 WIB)
+
+### Gejala Masalah (Frame `deteksi_20261026_140141`):
+Pada pengujian 6 objek di atas konveyor:
+* 3 koin lain terdeteksi tepat sebagai `Koin` (94%, 85%, 73%).
+* Tutup botol oranye terdeteksi tepat sebagai `Tutup Botol` (97.5%).
+* Charger putih terdeteksi tepat sebagai `Charger` (83%).
+* **1 koin perak di posisi kanan bawah `(u=724, v=321)` dikira Tutup Botol dengan confidence 95%.**
+
+### Akar Masalah (*Specular Glare Hotspot*):
+1. **Titik Pantul Cermin Lampu:** Di titik `u=724`, lampu atas memantulkan sinar langsung ke lensa kamera. Permukaan koin perak mengalami *overexposure* (kecerahan rata-rata 224 dari 255), sehingga tekstur relief cetakan timbul koin terhapus menjadi putih datar polos.
+2. **Bias Data Roboflow:** Dataset training `tutup_botol` mengandung foto tutup botol plastik putih polos. Model AI mencocokkan lingkaran putih datar tersebut sebagai tutup botol putih.
+3. **Karakteristik Fisik Nyata:** Tutup botol fisik tim robotik adalah plastik berwarna pekat (saturasi warna $S > 0.60$), sedangkan koin perak silau bersifat monokromatik / desaturasi ($S = 0.07$ atau 7%).
+
+### Solusi Software (*Zero-Retrain / Tanpa Ubah best.pt*):
+1. **Fitur `is_specular_metal_coin` di `src/detector.py`:**
+   * Memeriksa apakah benda yang diduga tutup botol memiliki ciri fisik koin silau: bentuk lingkaran/elips ($0.65 \le AR \le 1.50$), ukuran koin ($w, h \le 230$ px), saturasi warna sangat rendah ($S < 0.20$ dan $frac\_pekat < 0.18$), serta pantulan kecerahan tinggi ($V > 135$).
+   * Jika kriteria terpenuhi, sistem secara cerdas **mengoreksi kembali kelasnya menjadi Koin** dengan catatan `[koreksi silau]`.
+2. **Hasil Uji Langsung:**
+   * Diuji langsung pada frame `deteksi_20261026_140141_940.jpg`: Objek `(724, 321)` berhasil 100% terkoreksi menjadi `Koin [koreksi silau]` dan diekspor ke `target_robot.json` dengan koordinat pick koin ($Z = 2.0\text{ mm}$, container drop koin).
+   * Seluruh **46 unit test** (`pytest -v`) lolos 100%. Model `models/best.pt` tetap murni tanpa disentuh.

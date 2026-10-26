@@ -171,4 +171,27 @@ def test_refine_charger_vacuum_center():
     assert 160 <= cy <= 180
 
 
+def test_is_specular_metal_coin_dan_koreksi_silau():
+    from src.detector import is_specular_metal_coin
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+    # 1. Koin logam dengan pantulan silau putih (achromatic / specular glare: BGR 220, 220, 220)
+    frame[200:300, 200:300] = (220, 220, 220)
+    assert is_specular_metal_coin(frame, (200, 200, 300, 300)) is True
+
+    # 2. Tutup botol plastik berwarna pekat (merah pekat: BGR 20, 30, 230)
+    frame[400:500, 400:500] = (20, 30, 230)
+    assert is_specular_metal_coin(frame, (400, 400, 500, 500)) is False
+
+    # 3. Uji koreksi deteksi di Detector: jika AI salah tebak tutup_botol pada koin silau
+    box_silau = FakeBox((200, 200, 300, 300), 2, 0.95)  # class 2 = tutup_botol di FakeModel
+    det = Detector(model=FakeModel([box_silau]), device="cpu", smart_filter=True, cek_warna=True)
+    dets = det.detect(frame)
+    assert len(dets) == 1
+    assert dets[0].class_name == "koin"
+    assert dets[0].catatan == "koreksi silau"
+
+
+
 
