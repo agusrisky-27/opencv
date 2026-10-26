@@ -43,9 +43,20 @@ def validate_geometry(
     max_ar: float = 1.85,
     min_size_px: int = 10,
     max_area_frac: float = 0.40,
+    edge_margin: int = 0,
 ) -> bool:
-    """Validasi fisik objek: koin dan tutup botol berbentuk bundar/elips dan ukurannya wajar."""
+    """Validasi fisik objek: tolak objek terpotong di tepi frame dan pastikan bentuk/ukuran wajar."""
     x1, y1, x2, y2 = bbox
+    # Tolak objek yang terpotong / menempel di batas dinding frame kamera
+    if edge_margin > 0:
+        if (
+            x1 <= edge_margin
+            or x2 >= (frame_width - edge_margin)
+            or y1 <= edge_margin
+            or y2 >= (frame_height - edge_margin)
+        ):
+            return False
+
     w, h = x2 - x1, y2 - y1
     if w < min_size_px or h < min_size_px:
         return False
@@ -285,6 +296,7 @@ class Detector:
         max_ar: float = 1.85,
         max_area_frac: float = 0.40,
         min_size_px: int = 10,
+        edge_margin: int = 15,
         cek_warna: bool = True,
         roi: tuple[int, int, int, int] | None = None,
     ) -> None:
@@ -298,6 +310,7 @@ class Detector:
         self.max_ar = max_ar
         self.max_area_frac = max_area_frac
         self.min_size_px = min_size_px
+        self.edge_margin = edge_margin
         self.cek_warna = cek_warna
         self.roi = roi
         if model is None:
@@ -360,7 +373,7 @@ class Detector:
             label = display_label(class_name)
             catatan = ""
 
-            # 2. Filter Geometri Cerdas (aspek rasio, ukuran, batas area)
+            # 2. Filter Geometri Cerdas (aspek rasio, ukuran, batas area, dan proteksi tepi)
             if use_filter:
                 if class_name == "charger":
                     # Charger berbentuk balok/persegi panjang: toleransi rasio lebih leluasa
@@ -370,6 +383,7 @@ class Detector:
                         max_ar=4.00,
                         min_size_px=self.min_size_px,
                         max_area_frac=0.55,
+                        edge_margin=self.edge_margin,
                     ):
                         continue
                 else:
@@ -379,6 +393,7 @@ class Detector:
                         max_ar=self.max_ar,
                         min_size_px=self.min_size_px,
                         max_area_frac=self.max_area_frac,
+                        edge_margin=self.edge_margin,
                     ):
                         continue
 

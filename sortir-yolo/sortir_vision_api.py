@@ -66,10 +66,11 @@ class SortirVisionAPI:
         source: int | str = 0,
         weights: Path | str = DEFAULT_WEIGHTS,
         calib_path: Path | str = DEFAULT_CALIB_PATH,
-        conf: float = 0.25,
+        conf: float = 0.45,
         imgsz: int = 1280,
         width: int = 1280,
         height: int = 720,
+        edge_margin: int = 15,
         roi: tuple[int, int, int, int] | None = None,
     ) -> None:
         self.width = width
@@ -84,6 +85,7 @@ class SortirVisionAPI:
             device="auto",
             smart_filter=True,
             track=True,
+            edge_margin=edge_margin,
         )
 
         # Inisialisasi Transformasi Koordinat Robot (Berseberangan / Homography)

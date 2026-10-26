@@ -80,6 +80,10 @@ def test_validate_geometry():
     assert validate_geometry((100, 50, 700, 650), 1280, 720) is False
     # Terlalu kecil (noise 5x5 px)
     assert validate_geometry((10, 10, 15, 15), 1280, 720) is False
+    # Menempel di batas tepi frame kamera (edge_margin proteksi objek terpotong)
+    assert validate_geometry((5, 100, 60, 160), 1280, 720, edge_margin=15) is False
+    assert validate_geometry((1220, 100, 1275, 160), 1280, 720, edge_margin=15) is False
+    assert validate_geometry((30, 100, 90, 160), 1280, 720, edge_margin=15) is True
 
 
 def test_smart_filter_menolak_jendela_dan_wajah():

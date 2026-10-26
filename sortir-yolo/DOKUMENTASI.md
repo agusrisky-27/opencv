@@ -424,3 +424,34 @@ Jika Anda membuat proyek *Computer Vision + Robotika* serupa di masa depan, tera
    Dalam robotika fisik, konsistensi posisi adalah kunci. Membuat blueprint di karton manila menghemat waktu setup hingga 90% saat harus melakukan demonstrasi di lokasi yang berpindah-pindah.
 6. **Desain Komunikasi yang Sederhana (Decoupled IPC):**
    Hindari arsitektur jaringan yang terlalu rumit jika kamera dan pengendali robot berada di lingkungan lokal. Pertukaran data lewat file JSON atomik atau modul API lokal jauh lebih tangguh, minim bug, dan tanpa latensi jaringan.
+
+---
+
+## 10. INVESTIGASI & PENYELESAIAN BUG DETEKSI TEPI (26 OKTOBER 2026)
+
+### Gejala Masalah:
+Pada pengujian langsung di konveyor fisik (rekaman jam 13:13:11 WIB), file log `outputs/target_robot.json` mencatat koin yang baru masuk terdeteksi sebagai `tutup_botol` dengan confidence 0.447 pada koordinat $u = 1258, v = 176$.
+
+### Analisis Akar Masalah (Root Cause Analysis):
+1. **Objek Terpotong di Batas Tepi Kamera (*Boundary Ingress Truncation*):**
+   * Resolusi frame kamera adalah 1280 × 720 piksel ($u \in [0, 1279]$).
+   * Titik $u = 1258$ berarti koin baru saja menyentuh jangkauan kamera dan terpotong oleh dinding tepi kanan frame (jarak ke tepi hanya 22 piksel).
+   * Karena hanya tampak setengah lingkaran / busur lengkung tanpa relief tengah koin, model mendeteksi lengkungan bibir perak tersebut mirip dengan bibir melingkar plastik (*rim*) tutup botol.
+2. **Threshold Confidence Default Terlalu Longgar (`conf = 0.25`):**
+   * Model sebenarnya sangat ragu-ragu (confidence hanya 0.447 atau 44.7%).
+   * Pada koin utuh di tengah konveyor, model baru (`models/best.pt`) memiliki akurasi **99.5% (AP50 = 0.9947)** dengan confidence stabil di atas **0.85 - 0.98**.
+   * Karena default sistem sebelumnya adalah 0.25, deteksi lemah ini tetap diloloskan ke JSON target robot.
+3. **Celah Filter ROI & Fallback Target:**
+   * Di fungsi `choose_best_target`, bila tidak ada objek di dalam area kerja robot (ROI), sistem secara keliru melakukan fallback ke objek di luar ROI. Lengan robot seharusnya menolak mengambil objek yang berada di luar jangkauan fisik ($X = -216.3\text{ mm}$).
+
+### Solusi Permanen & Pembaruan Sistem yang Diterapkan:
+1. **Penerapan Edge Margin Guard (`edge_margin = 15`) di `src/detector.py`:**
+   * Ditambahkan inspeksi otomatis batas tepi frame kamera pada `validate_geometry()`.
+   * Objek yang menyentuh batas dinding frame ($x_1 \le 15$ atau $x_2 \ge W - 15$ atau $y_1 \le 15$ atau $y_2 \ge H - 15$) **otomatis ditolak** hingga objek meluncur utuh ke dalam konveyor.
+2. **Penyesuaian Sweet Spot Confidence Default (`conf = 0.45`):**
+   * Mengubah default confidence di `detect.py` dan `sortir_vision_api.py` dari `0.25` ke `0.45`.
+   * Koin asli (0.96+), tutup botol asli (0.98+), dan charger asli (0.94+) tetap terdeteksi 100%, sementara seluruh false positive tepi dan bayangan remang tereliminasi.
+3. **Proteksi Ketat ROI di `src/coordinate_transform.py`:**
+   * `choose_best_target` kini secara ketat mengembalikan `None` (`NO_TARGET`) jika tidak ada target di dalam ROI aktif, mencegah lengan robot bergerak ke koordinat berbahaya di luar batas konveyor.
+4. **Verifikasi Unit Test:**
+   * Seluruh 45 unit test (100%) lolos pengujian (`pytest -q` -> `45 passed`).

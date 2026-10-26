@@ -105,6 +105,9 @@ def test_choose_best_target():
     best_in_roi = choose_best_target([t1, t2], roi=roi_conveyor)
     assert best_in_roi == t1
 
+    # Jika semua target berada di luar ROI, robot tidak boleh menargetkan sembarang benda
+    assert choose_best_target([t2], roi=roi_conveyor) is None
+
 
 def test_export_and_read_target_json(tmp_path):
     json_path = tmp_path / "target_robot.json"

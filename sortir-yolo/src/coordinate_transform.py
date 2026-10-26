@@ -248,9 +248,9 @@ def choose_best_target(
     valid = targets
     if roi is not None:
         x1, y1, x2, y2 = roi
-        in_roi = [t for t in targets if (x1 <= t.pixel_center[0] <= x2 and y1 <= t.pixel_center[1] <= y2)]
-        if in_roi:
-            valid = in_roi
+        valid = [t for t in targets if (x1 <= t.pixel_center[0] <= x2 and y1 <= t.pixel_center[1] <= y2)]
+        if not valid:
+            return None
     return max(valid, key=lambda t: t.confidence)
 
 

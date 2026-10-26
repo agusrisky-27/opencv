@@ -291,7 +291,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     ap.add_argument("--source", default="0", help="nomor kamera (0,1,..) atau path gambar/video")
-    ap.add_argument("--conf", type=float, default=0.25, help="threshold confidence (default: 0.25)")
+    ap.add_argument("--conf", type=float, default=0.45, help="threshold confidence (default: 0.45 optimal)")
     ap.add_argument("--imgsz", type=int, default=1280, help="resolusi input AI (default: 1280 untuk menjaga detail objek kecil di webcam)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--width", type=int, default=1280, help="lebar kamera yang diminta")
@@ -300,6 +300,7 @@ def main() -> int:
     ap.add_argument("--print-every", type=float, default=0.5, help="jeda (detik) cetak koordinat di terminal")
     ap.add_argument("--no-show", action="store_true", help="jangan buka jendela (khusus untuk gambar)")
     ap.add_argument("--no-smart-filter", action="store_true", help="matikan filter geometri cerdas")
+    ap.add_argument("--edge-margin", type=int, default=15, help="margin piksel batas kamera untuk tolak objek terpotong (default: 15)")
     ap.add_argument("--no-track", action="store_true", help="matikan object tracking real-time (ByteTrack)")
     ap.add_argument("--tanpa-stabil", action="store_true", help="matikan penstabil suara-terbanyak multi-frame")
     ap.add_argument("--tanpa-persen", action="store_true", help="jangan tampilkan persentase confidence di label")
@@ -329,6 +330,7 @@ def main() -> int:
             max_ar=args.max_ar,
             max_area_frac=args.max_area,
             min_size_px=args.min_size,
+            edge_margin=args.edge_margin,
         )
     except FileNotFoundError as exc:
         print(exc)
