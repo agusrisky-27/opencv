@@ -1,8 +1,30 @@
+# File kredensial, token, dan kunci rahasia
 .env
+.env.*
+*.key
+*.pem
+credentials.*
+secrets.*
+
+# Model cadangan sementara (hanya best.pt utama yang disimpan)
+models/best-*.pt
+models/best_*.pt
+models/best.*.pt
+models/.DS_Store
+weights/
+*.pt.backup
+yolov8s-worldv2.pt
+
+# Dataset lokal mentah dan gabungan (agar ukuran repo ringan)
 datasets_raw/
 dataset_gabungan/
 runs/
 outputs/
+*.zip
+
+# Python & Virtualenv
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
+.DS_Store

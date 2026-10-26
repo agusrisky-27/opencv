@@ -14,9 +14,6 @@ Jalankan:
 
     # 2. Mode Sensor Infrared Serial (Jika sensor IR & relay konveyor terhubung ke Arduino USB):
     python sortir_otomatis.py --mode serial --port /dev/tty.usbmodem1234 --baud 9600
-
-    # 3. Mode Server REST API (Jika script robot di Windows memanggil via jaringan lokal Wi-Fi/LAN):
-    python sortir_otomatis.py --mode server --port 8000
 """
 from __future__ import annotations
 
@@ -197,8 +194,8 @@ class AutoSortirController:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Sistem Sortir Otomatis Penuh (Hands-Free)")
-    ap.add_argument("--mode", choices=["auto-vision", "serial", "server"], default="auto-vision",
-                    help="Mode operasi: 'auto-vision' (deteksi benda diam otomatis), 'serial' (sensor IR Arduino), atau 'server' (REST API)")
+    ap.add_argument("--mode", choices=["auto-vision", "serial"], default="auto-vision",
+                    help="Mode operasi: 'auto-vision' (deteksi benda diam otomatis), atau 'serial' (sensor IR Arduino)")
     ap.add_argument("--source", default="0", help="Nomor indeks webcam USB (0, 1, ..)")
     ap.add_argument("--target-classes", nargs="+", default=["koin", "charger"],
                     help="Daftar kelas yang ingin diambil robot (default: koin charger)")
@@ -215,19 +212,6 @@ def main() -> None:
         controller.run_auto_vision_loop()
     elif args.mode == "serial":
         controller.run_serial_ir_loop(port=args.port, baud=args.baud)
-    elif args.mode == "server":
-        print("Menjalankan API Server Uvicorn...")
-        import uvicorn
-        from fastapi import FastAPI
-
-        app = FastAPI(title="OpenCV Sortir Autonomous API")
-
-        @app.get("/target")
-        def get_current_target() -> dict[str, Any]:
-            t = controller.inspect_once()
-            return {"status": "TARGET_READY" if t else "NO_TARGET", "target": t.to_dict() if t else None}
-
-        uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 if __name__ == "__main__":
