@@ -113,8 +113,8 @@ while True:
 
 ---
 
-### PILIHAN 2: Import Modul `SortirVisionAPI` Langsung
-Jika Anda ingin menggabungkan seluruh logika dalam 1 script Python tanpa membuka terminal terpisah:
+### PILIHAN 2: Import Modul `SortirVisionAPI` Langsung (Mode Live Streaming)
+Jika Anda ingin memanggil penglihatan kamera secara berkala dari script kontroler robot:
 
 ```python
 from sortir_vision_api import SortirVisionAPI
@@ -133,6 +133,52 @@ while True:
         
         # Eksekusi G-Code...
 ```
+
+---
+
+### PILIHAN 3 (Paling Presisi / Standar Industri): Inspeksi Statis Sekali Lihat (Stop-and-Go Infrared Trigger)
+Ini adalah **metode paling direkomendasikan** untuk sistem konveyor fisik:
+Ketika benda melintas di depan sensor Infrared (IR), konveyor berhenti sesaat. Kamera hanya mengambil **1 kali snapshot foto statis** (sehingga koordinat $X, Y, Z$ **100% terkunci dan tidak berubah-ubah**). Jika benda adalah target sortir, robot mengambilnya. Jika bukan target sortir, konveyor langsung dinyalakan kembali!
+
+```python
+import time
+from sortir_vision_api import SortirVisionAPI
+
+vision = SortirVisionAPI(source=0)
+
+# Tentukan kelas apa saja yang ingin diambil robot (misal koin & charger):
+TARGET_SORTIR = ["koin", "charger"]
+
+while True:
+    # 1. Tunggu sinyal dari sensor Infrared konveyor (misal via pin GPIO / Serial Arduino)
+    # sensor_ir_terpicu = baca_sensor_ir()
+    # if sensor_ir_terpicu:
+    
+    print("🚦 Benda tiba di depan sensor IR! Menghentikan konveyor...")
+    # conveyor.stop()
+    time.sleep(0.15)  # Tunggu 150ms agar benda berhenti diam total (tanpa getaran)
+
+    # 2. Kamera lihat SEKALI SAJA (Single Snapshot Statis):
+    target = vision.inspect_stationary_object(target_classes=TARGET_SORTIR, save_snapshot=True)
+
+    if target is not None:
+        print(f"🎯 Target Cocok: {target.label} (Confidence: {target.confidence*100:.1f}%)")
+        print(f"   Koordinat Ambil Pasti: X={target.x_mm} mm, Y={target.y_mm} mm, Z={target.z_mm} mm")
+        print(f"   Koordinat Wadah      : X={target.drop_x_mm} mm, Y={target.drop_y_mm} mm, Z={target.drop_z_mm} mm")
+        
+        # 3. Lengan robot mengeksekusi Pick & Place ke titik statis tersebut
+        # robot.move_and_pick(target.x_mm, target.y_mm, target.z_mm)
+        # robot.drop_to(target.drop_x_mm, target.drop_y_mm, target.drop_z_mm)
+        print("✅ Benda selesai dipindahkan ke wadah!")
+    else:
+        print("⏩ Bukan kelas target sortir / area kosong. Mengabaikan...")
+
+    # 4. Nyalakan kembali konveyor untuk membawa benda berikutnya
+    # conveyor.start()
+    print("🟢 Konveyor jalan kembali.\n")
+```
+
+*(Untuk mencoba simulasinya di laptop tanpa menghubungkan kabel, jalankan: `python contoh_baca_koordinat_robot.py --mode infrared`)*
 
 ---
 

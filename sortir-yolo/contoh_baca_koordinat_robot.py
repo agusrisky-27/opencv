@@ -81,17 +81,60 @@ def jalankan_mode_api(source: int | str) -> None:
         vision.release()
 
 
+def jalankan_mode_infrared(source: int | str, target_classes: list[str]) -> None:
+    print("==========================================================")
+    print(" 🤖 MODE INSPEKSI STATIS (STOP-AND-GO INFRARED TRIGGER)")
+    print("==========================================================")
+    print("Sistem menunggu sinyal Infrared saat benda berhenti di konveyor.")
+    print(f"Kelas target sortir yang ingin diambil robot: {target_classes}")
+    print("Menginisialisasi kamera dan model AI YOLO...")
+
+    vision = SortirVisionAPI(source=source)
+    print("Vision siap!")
+    print("👉 Tekan [ENTER] di terminal untuk simulasi 'Sensor Infrared Terpicu & Konveyor Berhenti'")
+    print("   (Tekan Ctrl+C untuk keluar)\n")
+
+    try:
+        urutan = 1
+        while True:
+            input(f"[IR TRIGGER #{urutan}] Tekan ENTER untuk simulasi benda tiba & konveyor berhenti...")
+            print("⏳ Konveyor berhenti diam. Kamera mengambil 1 snapshot statis...")
+
+            # SEKALI LIHAT (Single Snapshot):
+            target = vision.inspect_stationary_object(target_classes=target_classes, save_snapshot=True)
+
+            if target:
+                print(f"✅ OBJEK TARGET VALID: {target.label} (Confidence: {target.confidence*100:.1f}%)")
+                print(f"   Titik Ambil Pasti (Statis) : X={target.x_mm} mm, Y={target.y_mm} mm, Z={target.z_mm} mm")
+                print(f"   Titik Wadah Sortir         : X={target.drop_x_mm} mm, Y={target.drop_y_mm} mm, Z={target.drop_z_mm} mm")
+                print("   --> 🦾 Lengan robot mengeksekusi Pick & Place (titik terkunci statis, tidak berubah-ubah).")
+                print("   --> 🟢 Gerak robot selesai. Konveyor dinyalakan kembali.\n")
+            else:
+                print("⛔ BUKAN TARGET SORTIR / AREA KOSONG.")
+                print("   --> ⏩ Lengan robot diam. Konveyor langsung dinyalakan kembali mencari benda berikutnya.\n")
+
+            urutan += 1
+    except KeyboardInterrupt:
+        print("\nBerhenti.")
+    finally:
+        vision.release()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Contoh Integrasi Koordinat Robotik")
-    parser.add_argument("--mode", choices=["json", "api"], default="json",
-                        help="Mode baca koordinat: 'json' (baca file) atau 'api' (panggil vision langsung)")
-    parser.add_argument("--source", default="0", help="Index kamera (khusus mode api)")
+    parser.add_argument("--mode", choices=["json", "api", "infrared"], default="infrared",
+                        help="Mode baca koordinat: 'infrared' (single-shot statis), 'json' (baca file) atau 'api' (stream)")
+    parser.add_argument("--source", default="0", help="Index kamera (khusus mode api/infrared)")
+    parser.add_argument("--target-classes", nargs="+", default=["koin", "charger"],
+                        help="Daftar kelas yang ingin diambil robot (default: koin charger)")
     args = parser.parse_args()
 
     if args.mode == "json":
         jalankan_mode_json()
-    else:
+    elif args.mode == "api":
         jalankan_mode_api(args.source)
+    else:
+        jalankan_mode_infrared(args.source, args.target_classes)
 
 
 if __name__ == "__main__":

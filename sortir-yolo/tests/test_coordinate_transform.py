@@ -136,3 +136,36 @@ def test_export_and_read_target_json(tmp_path):
     assert data["target"]["robot_mm"]["x"] == 12.5
     assert data["target"]["robot_mm"]["y"] == 180.0
     assert data["target"]["robot_mm"]["z"] == 2.0
+
+
+def test_inspect_stationary_object(monkeypatch, tmp_path):
+    from sortir_vision_api import SortirVisionAPI
+    from src.detector import Detection
+
+    # Buat dummy API tanpa membuka kamera fisik
+    monkeypatch.setattr("src.camera.Camera.open", lambda self, auto_fallback=True: self)
+    frame_dummy = np.zeros((720, 1280, 3), dtype=np.uint8)
+    monkeypatch.setattr("src.camera.Camera.read", lambda self: (True, frame_dummy))
+
+    vision = SortirVisionAPI(source=0)
+    # Mock detector output: koin di (300, 300)
+    dummy_det = Detection(
+        class_id=0,
+        class_name="koin",
+        label="Koin",
+        confidence=0.92,
+        bbox=(250, 250, 350, 350),
+        center=(300, 300),
+        center_norm=(300/1280, 300/720),
+    )
+    monkeypatch.setattr(vision.detector, "detect", lambda f, apply_smart_filter=True: [dummy_det])
+
+    # 1. Jika target_classes mencakup "koin", harus dikembalikan sebagai RobotTarget
+    target = vision.inspect_stationary_object(target_classes=["koin", "charger"], save_snapshot=False)
+    assert target is not None
+    assert target.class_name == "koin"
+    assert target.pixel_center == (300, 300)
+
+    # 2. Jika target_classes hanya "charger", koin harus diabaikan (mengembalikan None)
+    ignored = vision.inspect_stationary_object(target_classes=["charger"], save_snapshot=False)
+    assert ignored is None

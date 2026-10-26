@@ -164,6 +164,64 @@ class SortirVisionAPI:
         export_target_json(best, robot_targets, TARGET_JSON_PATH)
         return robot_targets
 
+    def inspect_stationary_object(
+        self,
+        target_classes: list[str] | None = None,
+        save_snapshot: bool = True,
+        flush_frames: int = 3,
+    ) -> RobotTarget | None:
+        """Dipanggil saat konveyor BERHENTI (dipicu sensor Infrared / Proximity).
+
+        Mengambil 1 kali pengamatan statis (Single-Shot Snapshot):
+        1. Membuang buffer kamera lama saat konveyor masih bergerak.
+        2. Mengambil 1 frame foto tajam saat benda sudah diam total (tanpa motion blur / jitter).
+        3. Mendeteksi objek dan memeriksa apakah termasuk dalam daftar 'target_classes' yang ingin diambil.
+        4. Jika ya: mengembalikan koordinat mm fisik statis (X, Y, Z pasti).
+        5. Jika tidak cocok (misal bukan kelas target): mengembalikan None (agar konveyor bisa langsung jalan lagi).
+        """
+        # Buang buffer frame lama dari internal camera queue
+        for _ in range(max(1, flush_frames)):
+            self.read_frame()
+
+        frame = self.read_frame()
+        if frame is None:
+            return None
+
+        h, w = frame.shape[:2]
+        self.detector.roi = self.roi
+        detections = self.detector.detect(frame, apply_smart_filter=True)
+
+        if save_snapshot:
+            snap_path = OUTPUT_DIR / "snapshot_ir_terakhir.jpg"
+            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(snap_path), frame)
+
+        if not detections:
+            export_target_json(None, [], TARGET_JSON_PATH)
+            return None
+
+        robot_targets: list[RobotTarget] = []
+        for d in detections:
+            # Filter hanya kelas yang ingin diambil oleh robot
+            if target_classes is not None and d.class_name not in target_classes:
+                continue
+
+            rt = self.transformer.to_robot_target(
+                class_name=d.class_name,
+                label=d.label,
+                confidence=d.confidence,
+                pixel_center=d.center,
+                frame_width=w,
+                frame_height=h,
+                track_id=d.track_id,
+                catatan=d.catatan,
+            )
+            robot_targets.append(rt)
+
+        best = choose_best_target(robot_targets, roi=self.roi)
+        export_target_json(best, robot_targets, TARGET_JSON_PATH)
+        return best
+
     def release(self) -> None:
         """Tutup koneksi kamera."""
         if self.camera:
