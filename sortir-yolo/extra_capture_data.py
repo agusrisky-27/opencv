@@ -43,7 +43,7 @@ def count_photos(folder: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-s", "--source", default="1", help="nomor kamera (default: 1 untuk webcam USB / iPhone)")
+    ap.add_argument("-s", "--source", default="0", help="nomor kamera (default: 0 untuk webcam USB Rexus)")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--interval", type=float, default=0.4, help="jeda mode auto-capture (detik)")
