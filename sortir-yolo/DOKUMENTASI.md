@@ -479,3 +479,31 @@ Pada pengujian 6 objek di atas konveyor:
 2. **Hasil Uji Langsung:**
    * Diuji langsung pada frame `deteksi_20261026_140141_940.jpg`: Objek `(724, 321)` berhasil 100% terkoreksi menjadi `Koin [koreksi silau]` dan diekspor ke `target_robot.json` dengan koordinat pick koin ($Z = 2.0\text{ mm}$, container drop koin).
    * Seluruh **46 unit test** (`pytest -v`) lolos 100%. Model `models/best.pt` tetap murni tanpa disentuh.
+
+---
+
+## 12. SISTEM SORTIR OTOMATIS PENUH (100% HANDS-FREE / TANPA SENTUH LAPTOP)
+
+### Arsitektur Kasus Nyata di Lapangan (Real Production Case):
+Untuk penggunaan di pabrik / demonstrasi otomatis penuh, **tidak boleh ada operator yang menekan tombol keyboard di laptop**. Sistem harus berjalan secara *autonomous loop* (*Stop-and-Go*):
+
+1. **Trigger Kedatangan Benda (Sensor IR / Auto-Vision):**
+   * Saat konveyor membawa barang dan menyentuh sensor Infrared, konveyor otomatis berhenti.
+2. **Pengambilan Titik Statis (Single-Shot Snapshot):**
+   * Kamera secara instan mengambil 1 foto saat benda diam sempurna. Titik $(X, Y, Z)$ dikunci (tidak berfluktuasi/jitter).
+3. **Penyaringan Kelas Target Sortir:**
+   * Jika kelas benda terdaftar dalam target ambil (misal `["koin", "charger"]`): Lengan robot RNV3 bergerak mengambil benda dan memindahkan ke wadah tujuan.
+   * Jika BUKAN target sortir (misal `tutup_botol`): Lengan robot diam saja, dan konveyor langsung dinyalakan kembali membawa benda berikutnya.
+
+### Modul Pengendali Otomatis (`sortir_otomatis.py`):
+Tersedia skrip mandiri `sortir_otomatis.py` dengan 3 mode operasi:
+```bash
+# Mode 1: Auto-Vision (Kamera otomatis mendeteksi ketika benda diam di konveyor)
+python sortir_otomatis.py --mode auto-vision --source 0
+
+# Mode 2: Hardware Sensor Infrared Serial (Arduino USB)
+python sortir_otomatis.py --mode serial --port /dev/ttyUSB0 --baud 9600
+
+# Mode 3: Server REST API (FastAPI / Uvicorn untuk pemanggilan lintas laptop)
+python sortir_otomatis.py --mode server --port 8000
+```
