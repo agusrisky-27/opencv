@@ -1,5 +1,5 @@
 # 🤖 Panduan Integrasi Koordinat untuk Tim Robotik (RNV3)
-**Sistem Sortir Koin & Tutup Botol (YOLOv8 + OpenCV Vision)**
+**Sistem Sortir 3 Kelas: Koin, Tutup Botol, & Charger (YOLOv8 + OpenCV Vision)**
 
 Dokumentasi ini dibuat khusus untuk **Rekan Tim Robotik** agar dapat dengan mudah dan cepat membaca data koordinat fisik dari modul Vision AI (OpenCV) dan menggerakkan Robot Lengan Linier RNV3 di laptop Windows.
 
@@ -26,10 +26,13 @@ Sistem penglihatan kamera dan lengan robot dipasang dalam posisi **BERSEBERANGAN
 Tim robotik **TIDAK PERLU** lagi menghitung rumus konversi piksel ke milimeter yang rumit. Modul Vision AI sudah otomatis menangani:
 1. **Inversi Sumbu X (Flip X):** Sisi kanan pada kamera otomatis dibalik menjadi sisi kiri bagi robot ($X_{robot}$).
 2. **Penyesuaian Sumbu Y (Jangkauan Lengan):** Jarak jauh-dekat kamera otomatis diselaraskan dengan jangkauan rel robot ($Y_{robot}$).
-3. **Ketinggian Sumbu Z Otomatis:**
+3. **Ketinggian Sumbu Z Otomatis per Jenis Benda:**
    - 🪙 **Koin (Benda Tipis):** $Z = 2.0\text{ mm}$
-   - 🔵 **Tutup Botol (Benda Tebal):** $Z = 12.0\text{ mm}$
-4. **Koreksi Sudut Kamera (Homography 4-Titik):** Efek distorsi trapesium akibat kemiringan kamera sudah otomatis dikoreksi.
+   - 🔵 **Tutup Botol (Benda Sedang):** $Z = 12.0\text{ mm}$
+   - 🔌 **Charger (Benda Tebal):** $Z = 28.0\text{ mm}$
+4. **Refinement Titik Hisap Charger (Airtight Vacuum Cup Alignment):**
+   - Khusus kepala charger, Vision AI secara dinamis menggeser titik hisap vacuum cup dari leher colokan ke **titik tengah permukaan badan charger yang datar** (area logo `iT.`). Hal ini menjamin hisapan karet vacuum cup kedap udara (*airtight*) dan tidak meleset pada dua colokan logam!
+5. **Koreksi Sudut Kamera (Homography 4-Titik):** Efek distorsi trapesium akibat kemiringan kamera sudah otomatis dikoreksi.
 
 Semua data yang dikeluarkan oleh Vision AI **sudah dalam satuan Milimeter Fisik Nyata ($X, Y, Z\text{ mm}$)** yang siap langsung dikirim ke motor robot!
 
@@ -177,7 +180,7 @@ python kalibrasi_robot.py --source 0
 
 ## ⚙️ Konfigurasi Wadah Sortir (`robot_calib.json`)
 
-Posisi fisik kotak/wadah tempat menaruh koin dan tutup botol dapat Anda ubah dengan mudah pada file [`robot_calib.json`](file:///Users/agusrisky/Documents/opencv/sortir-yolo/robot_calib.json):
+Posisi fisik kotak/wadah tempat menaruh koin, tutup botol, dan charger dapat Anda ubah dengan mudah pada file [`robot_calib.json`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/robot_calib.json):
 
 ```json
 "drop_coordinates": {
@@ -190,10 +193,15 @@ Posisi fisik kotak/wadah tempat menaruh koin dan tutup botol dapat Anda ubah den
     "x": 150.0,
     "y": 100.0,
     "z": 55.0
+  },
+  "charger": {
+    "x": 0.0,
+    "y": 180.0,
+    "z": 70.0
   }
 }
 ```
-*Sesuaikan nilai X, Y, Z di atas dengan posisi fisik wadah koin dan tutup botol di samping robot Anda (dalam satuan mm).*
+*Sesuaikan nilai X, Y, Z di atas dengan posisi fisik wadah koin (kiri), tutup botol (kanan), dan charger (depan) di samping robot Anda (dalam satuan mm).*
 
 ---
 
