@@ -1,9 +1,10 @@
-# 🎯 Sistem Vision Sortir Koin & Tutup Botol (YOLOv8 + OpenCV)
+# 🎯 Sistem Vision Sortir 3 Kelas: Koin, Tutup Botol, & Charger (YOLOv8 + OpenCV)
 
-Program Computer Vision berbasis **YOLOv8 & OpenCV** yang dirancang untuk mendeteksi benda (**Koin Rupiah** dan **Tutup Botol**) secara real-time pada sabuk conveyor:
-- Memberikan kotak pembatas (*bounding box*) dan label nama kelas yang presisi.
-- Menghitung **titik koordinat tengah $(cx, cy)$** secara otomatis sebagai target hisap bagi robot lengan vakum.
-- Dilengkapi sistem pelacakan objek (*ByteTrack*) agar ID objek tidak berkedip (*flicker*) saat bergerak di atas conveyor.
+Program Computer Vision berbasis **YOLOv8 & OpenCV** yang dirancang untuk mendeteksi benda (**Koin**, **Tutup Botol**, dan **Charger**) secara real-time pada sabuk conveyor industri:
+- Memberikan kotak pembatas (*bounding box*) dan label nama kelas yang presisi untuk 3 kelas.
+- Menghitung **titik koordinat hisap vakum $(cx, cy)$** secara otomatis (khusus charger: menggeser titik hisap ke bidang datar kedap udara di area logo `iT.`).
+- Dilengkapi sistem pelacakan objek (*ByteTrack*) dan penstabil Kalman agar ID objek tidak berkedip (*flicker*) saat bergerak di atas conveyor.
+- Menulis koordinat robot fisik ($X, Y, Z\text{ mm}$) secara atomik ke `outputs/target_robot.json`.
 
 ---
 
@@ -33,28 +34,28 @@ Wajib dijalankan setiap kali baru membuka jendela terminal baru:
 
 ### 3. Menjalankan Deteksi Kamera (`detect.py`)
 
-- **Kamera Bawaan Laptop / Mac (Index 0):**
+- **Webcam Eksternal USB Konveyor (Rexus SW-10, Index 0):** 👈 *(Paling Sering Dipakai)*
   ```bash
-  python detect.py
+  python detect.py --source 0 --warna-kelas
   ```
-- **Webcam Eksternal USB (Rexus SW-10) atau Kamera iPhone (Index 1):** 👈 *(Paling Sering Dipakai)*
+- **Kamera Bawaan Laptop / Mac (Index 1):**
   ```bash
   python detect.py --source 1
   ```
-- **Mode Warna Kotak Berbeda Tiap Kelas (Koin = Emas, Tutup Botol = Cyan):**
+- **Mode Warna Kotak Berbeda Tiap Kelas (Koin = Emas, Tutup Botol = Cyan, Charger = Merah):**
   ```bash
-  python detect.py --source 1 --warna-kelas
+  python detect.py --source 0 --warna-kelas
   ```
 - **Uji Coba Deteksi pada Satu File Gambar:**
   ```bash
-  python detect.py --source foto.jpg
+  python detect.py --source outputs/preview_charger_on_conveyor.jpg --warna-kelas
   ```
 
 #### 🎮 Tombol Pintas Saat Jendela Kamera Terbuka:
 | Tombol | Fungsi |
 |---|---|
 | **`q`** atau **`ESC`** | Keluar dari program kamera |
-| **`w`** | Mengubah warna kotak (warna per-kelas: emas & cyan) |
+| **`w`** | Mengubah warna kotak (warna per-kelas: emas, cyan, merah) |
 | **`s`** | Menyimpan tangkapan layar (*screenshot*) ke folder `outputs/` |
 | **`c`** | Menyimpan titik koordinat objek ke file `outputs/koordinat.csv` |
 | **`t`** | Mengaktifkan / mematikan pelacak objek (*Object Tracking*) |
