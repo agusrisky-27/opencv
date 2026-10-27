@@ -101,8 +101,8 @@ def is_human_skin_face(crop: np.ndarray, frame_w: int, frame_h: int) -> bool:
         return False
     area_frac = (w * h) / float(max(frame_w * frame_h, 1))
     skin_frac = _cek_warna_kulit(crop)
-    # Wajah di depan webcam: harus cukup besar di layar DAN kaya warna kulit manusia
-    if skin_frac > 0.40 and area_frac > 0.020 and min(w, h) >= 90:
+    # Wajah di depan webcam: harus cukup besar di layar DAN kaya warna kulit manusia (> 48%)
+    if skin_frac > 0.48 and area_frac > 0.020 and min(w, h) >= 90:
         return True
     if skin_frac > 0.70 and area_frac > 0.015 and min(w, h) >= 80:
         return True
