@@ -193,5 +193,27 @@ def test_is_specular_metal_coin_dan_koreksi_silau():
     assert dets[0].catatan == "koreksi silau"
 
 
+def test_validate_geometry_charger_tinggi():
+    from src.detector import validate_geometry
+    # Charger berdiri tinggi (h=510 pada frame 720p, area_frac < 0.55)
+    bbox = (339, 127, 861, 638)
+    # Harus lolos validasi geometri charger (max_dim_frac fleksibel)
+    assert validate_geometry(
+        bbox, 1280, 720, min_ar=0.25, max_ar=4.00, min_size_px=10, max_area_frac=0.55, edge_margin=0
+    ) is True
+
+
+def test_edge_margin_default_nol():
+    from src.detector import Detector
+    # Box menempel dekat batas atas frame 640x480 (y1 = 6)
+    box = FakeBox((100, 6, 200, 106), 2, 0.93)
+    det = Detector(model=FakeModel([box]), device="cpu", smart_filter=True)
+    dets = det.detect(FRAME)
+    # Default edge_margin=0 tidak boleh menolak objek ini
+    assert len(dets) == 1
+    assert dets[0].bbox == (100, 6, 200, 106)
+
+
+
 
 

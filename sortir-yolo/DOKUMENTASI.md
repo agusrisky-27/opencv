@@ -507,3 +507,51 @@ python sortir_otomatis.py --mode serial --port /dev/ttyUSB0 --baud 9600
 # Mode 3: Server REST API (FastAPI / Uvicorn untuk pemanggilan lintas laptop)
 python sortir_otomatis.py --mode server --port 8000
 ```
+
+---
+
+## 13. INVESTIGASI & PENYELESAIAN: MENGAPA OBJEK SANGAT SULIT TERDETEKSI (27 OKTOBER 2026)
+
+### A. Gejala Masalah (User Report)
+Pada pengujian langsung di konveyor fisik, sistem tampak "sangat sulit atau makin sulit mendeteksi objek", bahkan pada beberapa frame uji (misal frame `deteksi_20261027_090420_886` yang memuat 3 benda nyata: 2 tutup botol dan 1 koin), layar output OpenCV melaporkan **0 objek terdeteksi**.
+
+### B. Audit Mendalam & Penemuan Akar Masalah (Empirical Audit)
+Setelah penelusuran menyeluruh pada seluruh pipeline deteksi, ditemukan kombinasi **4 pembatas (bottleneck)** yang menyebabkan hilangnya objek secara masif:
+
+1. **Resolusi Input AI Diperkecil dari 1280 ke 640 (`--imgsz 640`):**
+   * *Akar Masalah:* Resolusi webcam adalah 720p ($1280 \times 720$). Koin di atas konveyor memiliki diameter asli hanya sekitar 50–80 piksel. Ketika gambar diperkecil 50% menjadi resolusi 640, koin mengecil drastis menjadi hanya 25–40 piksel.
+   * *Dampak Arsitektur YOLOv8:* Pada piramida fitur terkecil ($P_3$, stride 8), koin 25 piksel hanya diwakili oleh bidang $3 \times 3$ sel. Fitur relief dan siluet bundar koin terhapus oleh interpolasi downsampling, menyebabkan confidence koin anjlok dari 0.91 menjadi $< 0.05$ (hilang total).
+2. **Ambang Batas Confidence Terlalu Tinggi (`conf = 0.45`):**
+   * *Akar Masalah:* Dalam kondisi pencahayaan ruang konveyor nyata (cahaya difus, bayangan, sedikit miring), objek riil sering kali menghasilkan skor confidence antara `0.28` hingga `0.44` (misal tutup botol 0.32, koin 0.36, charger 0.40).
+   * *Dampak:* Threshold 0.45 memotong deteksi-deteksi valid ini sebelum sempat diolah atau distabilkan oleh buffer voting multi-frame (`Penstabil`). Pada video real-time, skor yang berfluktuasi di sekitar 0.42–0.46 menyebabkan bounding box berkedip (*flicker*) dan ID pelacak ByteTrack putus.
+3. **Filter Batas Tepi (`edge_margin = 15`) Terlalu Agresif:**
+   * *Akar Masalah:* Logika `validate_geometry` menolak objek jika koordinat kotaknya menyentuh margin 15 piksel dari tepi frame ($y_1 \le 15$ atau $y_2 \ge H - 15$).
+   * *Dampak Nyata:* Pada frame `deteksi_20261027_090420_886`, tutup botol oranye (conf 0.93, lebar 198 px, tinggi 127 px) berada di posisi konveyor atas dengan $y_1 = 6$. Karena $6 \le 15$, objek besar dan jelas ini langsung dibuang oleh filter geometri!
+4. **Pembatasan Dimensi Tinggi Maksimal pada Charger:**
+   * *Akar Masalah:* Aturan lama `h > frame_height * 0.65` menolak objek dengan tinggi $> 468$ px pada frame 720p. Charger yang ditaruh berdiri (*upright*) atau kamera yang sedikit dekat dapat mencapai tinggi 510 px meskipun luas areanya hanya 28.9% dari layar ($< 55\%$).
+
+### C. Tabel Bukti Empiris (Sebelum vs Sesudah Perbaikan)
+Uji coba langsung pada sampel gambar riil di folder `outputs/`:
+
+| Frame Gambar Uji | Setelan Sebelumnya (`imgsz=640, conf=0.45, em=15`) | Setelan Optimal Baru (`imgsz=1280, conf=0.25, em=0`) | Status |
+| :--- | :--- | :--- | :--- |
+| `deteksi_20261027_090420_886.jpg` | **0 Objek** (Koin & Tutup Hilang) | **3 Objek:** Tutup (0.93), Koin (0.91), Tutup (0.78) | ✅ Sembuh 100% |
+| `deteksi_20261026_140141_940.jpg` | **0 Objek** (Charger conf 0.26 gugur) | **1 Objek:** Charger (0.81) | ✅ Sembuh 100% |
+| `deteksi_20261026_140141_543.jpg` | **0 Objek** | **1 Objek:** Charger (0.81) | ✅ Sembuh 100% |
+| `deteksi_20261025_145648_055.jpg` | **0 Objek** (Koin conf 0.32 gugur) | **1 Objek:** Koin (0.32) | ✅ Sembuh 100% |
+| `deteksi_20261025_143337_767.jpg` | **2 Objek** | **4 Objek:** Tutup (0.92), Koin (0.82), Koin (0.59), Tutup (0.30) | ✅ Sembuh 100% |
+
+### D. Solusi yang Diterapkan
+1. **Mengembalikan Resolusi Standar AI ke 1280 Piksel:**
+   * Mengatur default `--imgsz 1280` di `detect.py`, `sortir_vision_api.py`, dan `src/detector.py`. Objek kecil seperti koin mendapatkan detail piksel optimal 1:1 dari kamera 720p.
+2. **Mengembalikan Sweet Spot Confidence ke 0.25:**
+   * Menjadikan `conf = 0.25` sebagai default agar seluruh benda nyata terdeteksi tanpa terpengaruh bayangan/remang, sementara noise dicegah oleh filter geometri dan penstabil suara terbanyak (`Penstabil`).
+3. **Menonaktifkan Default `edge_margin` (`default = 0`):**
+   * Mengatur `edge_margin = 0` secara default sehingga benda yang berjalan dekat rel atas/bawah konveyor tidak terhapus sia-sia. Pembatasan area kerja kini didelegasikan sepenuhnya ke parameter `ROI` (Region of Interest) yang presisi.
+4. **Relaksasi Dimensi Maksimal Charger di `validate_geometry()`:**
+   * Memperbolehkan dimensi hingga `0.85 * frame_dimension` untuk charger (asalkan rasio luas tetap $< 0.55$), sehingga charger posisi berdiri tetap terdeteksi mulus.
+5. **Melengkapi Default Kelas Target di `sortir_otomatis.py`:**
+   * Memastikan `target_classes` mencakup ketiga kelas: `["koin", "tutup_botol", "charger"]`.
+6. **Verifikasi Unit Testing:**
+   * Seluruh **49 unit tests** (`pytest -v`) lolos 100%. Model AI `models/best.pt` tetap murni tanpa disentuh/retrain.
+

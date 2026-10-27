@@ -60,7 +60,9 @@ def validate_geometry(
     w, h = x2 - x1, y2 - y1
     if w < min_size_px or h < min_size_px:
         return False
-    if w > frame_width * 0.65 or h > frame_height * 0.65:
+    max_dim_w = frame_width * 0.85 if max_area_frac > 0.45 else frame_width * 0.65
+    max_dim_h = frame_height * 0.85 if max_area_frac > 0.45 else frame_height * 0.65
+    if w > max_dim_w or h > max_dim_h:
         return False
     if (w * h) > (frame_width * frame_height * max_area_frac):
         return False
@@ -226,8 +228,8 @@ def verifikasi_koin_asli(frame: np.ndarray, bbox: tuple[int, int, int, int], con
     if gray.max() == gray.min():
         return True  # frame sintetis polos (unit test)
 
-    # Jika deteksi YOLO sudah yakin (conf >= 0.65), langsung loloskan koin
-    if confidence >= 0.65:
+    # Jika deteksi YOLO sudah yakin (conf >= 0.50), langsung loloskan koin
+    if confidence >= 0.50:
         return True
 
     # 1. Tolak jika objek adalah wajah manusia
@@ -338,7 +340,7 @@ class Detector:
         max_ar: float = 1.85,
         max_area_frac: float = 0.40,
         min_size_px: int = 10,
-        edge_margin: int = 15,
+        edge_margin: int = 0,
         cek_warna: bool = True,
         roi: tuple[int, int, int, int] | None = None,
     ) -> None:

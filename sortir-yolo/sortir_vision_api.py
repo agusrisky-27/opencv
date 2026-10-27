@@ -66,11 +66,11 @@ class SortirVisionAPI:
         source: int | str = 0,
         weights: Path | str = DEFAULT_WEIGHTS,
         calib_path: Path | str = DEFAULT_CALIB_PATH,
-        conf: float = 0.45,
+        conf: float = 0.25,
         imgsz: int = 1280,
         width: int = 1280,
         height: int = 720,
-        edge_margin: int = 15,
+        edge_margin: int = 0,
         roi: tuple[int, int, int, int] | None = None,
     ) -> None:
         self.width = width
