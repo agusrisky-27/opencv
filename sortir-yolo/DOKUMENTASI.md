@@ -1,260 +1,364 @@
-# 📘 DOKUMENTASI LENGKAP & CATATAN PENTING PROYEK
+# 📘 DOKUMENTASI LENGKAP & MASTER KNOWLEDGE BASE PROYEK
 ## Sistem Sortir Otomatis Berbasis Visi Komputer (YOLOv8 + OpenCV) & Integrasi Robot Lengan (RNV3)
 
-> Dokumen ini disusun sebagai panduan menyeluruh (*knowledge base*) yang merangkum seluruh perjalanan pengembangan sistem dari awal hingga saat ini. Dokumen ini dirancang agar mudah dipahami, sistematis, dan dapat dijadikan rujukan utama ketika menghadapi proyek atau kasus serupa di masa mendatang.
+> Dokumen ini disusun sebagai panduan menyeluruh (*Master Engineering Guide & Knowledge Base*) yang merangkum arsitektur sistem, alur pembuatan proyek dari nol hingga produksi, panduan komprehensif pelatihan AI (Google Colab, Fine-Tuning, & Resume Epoch), lapisan filter cerdas, kalibrasi koordinat robot, serta praktik terbaik rekayasa visi komputer.
+>
+> 📌 *Untuk log kronologis progres kerja harian dan mingguan secara terperinci, silakan merujuk ke file [WORK_DOKUMENTATION.md](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/WORK_DOKUMENTATION.md).*
 
 ---
 
 ## 📑 DAFTAR ISI
-1. [Latar Belakang & Arsitektur Sistem](#1-latar-belakang--arsitektur-sistem)
-2. [Kronologi & Perjalanan Pengembangan (Tahap demi Tahap)](#2-kronologi--perjalanan-pengembangan)
-3. [Tantangan Utama, Masalah (Bugs), & Solusi Teknis](#3-tantangan-utama-masalah-bugs--solusi-teknis)
-4. [Logika & Filter Cerdas (Smart Filter)](#4-logika--filter-cerdas-smart-filter)
-5. [Sistem Kalibrasi Hand-to-Eye & Integrasi Robotik](#5-sistem-kalibrasi-hand-to-eye--integrasi-robotik)
-6. [Inovasi Blueprint / Alas Acuan di Kertas Manila](#6-inovasi-blueprint--alas-acuan-di-kertas-manila)
-7. [Struktur File & Penjelasan Modul](#7-struktur-file--penjelasan-modul)
-8. [Ringkasan Perintah Cepat (Cheat-Sheet)](#8-ringkasan-perintah-cepat-cheat-sheet)
-9. [Best Practices & Tips Menghadapi Kasus Serupa](#9-best-practices--tips-menghadapi-kasus-serupa)
+1. [Latar Belakang & Arsitektur Global Sistem](#1-latar-belakang--arsitektur-global-sistem)
+2. [Prasyarat & Cara Menjalankan Sistem (Getting Started)](#2-prasyarat--cara-menjalankan-sistem-getting-started)
+3. [Alur Pembuatan Proyek dari Nol hingga Selesai (Life-Cycle)](#3-alur-pembuatan-proyek-dari-nol-hingga-selesai-life-cycle)
+4. [Panduan Lengkap Pelatihan AI YOLOv8 (Colab, Fine-Tuning, & Resume)](#4-panduan-lengkap-pelatihan-ai-yolov8-colab-fine-tuning--resume)
+5. [Lapisan Logika & Filter Cerdas (Smart Filters)](#5-lapisan-logika--filter-cerdas-smart-filters)
+6. [Sistem Kalibrasi Hand-to-Eye & Inovasi Blueprint Manila](#6-sistem-kalibrasi-hand-to-eye--inovasi-blueprint-manila)
+7. [Sistem Sortir Otomatis Penuh (100% Hands-Free / Stop-and-Go)](#7-sistem-sortir-otomatis-penuh-100-hands-free--stop-and-go)
+8. [Struktur File & Penjelasan Modul Proyek](#8-struktur-file--penjelasan-modul-proyek)
+9. [Ringkasan Perintah Cepat (Cheat-Sheet) Operasional](#9-ringkasan-perintah-cepat-cheat-sheet-operasional)
+10. [Best Practices & Tips Menghadapi Kasus Serupa](#10-best-practices--tips-menghadapi-kasus-serupa)
 
 ---
 
-## 1. LATAR BELAKANG & ARSITEKTUR SISTEM
+## 1. LATAR BELAKANG & ARSITEKTUR GLOBAL SISTEM
 
 ### A. Tujuan Proyek
-Membangun sistem visi komputer cerdas yang mampu:
-1. **Mendeteksi dan mengenali 3 jenis benda** pada sabuk konveyor industri:
-   - 🪙 **Koin:** Objek logam bundar tipis dengan pantulan kilap tinggi.
-   - 🔵 **Tutup Botol:** Objek plastik silinder berdiameter sedang dengan warna bervariasi.
-   - 🔌 **Charger:** Objek elektronik persegi panjang/kubus dengan dua pin colokan logam (kepala adapter HP).
-2. **Menentukan titik pusat fisik objek** dalam satuan milimeter nyata ($X, Y, Z\text{ mm}$), termasuk pergeseran otomatis titik hisap vakum (*suction point offset*) ke permukaan datar pada benda asimetris seperti charger.
-3. **Mengirimkan koordinat target** secara instan ke sistem kontroler Robot Lengan (RNV3) untuk dilakukan penyortiran otomatis (*pick and place*) ke wadah sortir masing-masing (Kiri = Koin, Kanan = Tutup Botol, Depan = Charger).
+Membangun sistem visi komputer industri yang mandiri (*standalone*), cepat (*real-time 30 FPS*), dan memiliki keandalan tinggi untuk menyortir **3 jenis objek** pada sabuk konveyor berjalan:
+1. 🪙 **Koin Logam:** Objek bulat tipis berbahan logam perak/kuningan dengan pantulan cahaya tinggi (*specular reflectance*).
+2. 🔵 **Tutup Botol Plastik:** Objek silinder plastik berdiameter sedang dengan variasi warna pekat (oranye, biru, merah, hijau).
+3. 🔌 **Kepala Charger HP:** Objek elektronik persegi panjang/kubus asimetris (badan plastik datar + dua pin colokan logam sempit).
+
+Sistem bertugas mendeteksi benda, menghitung titik koordinat fisik presisi milimeter $(X, Y, Z\text{ mm})$, menggeser titik hisap vakum ke permukaan datar kedap udara, dan mengekspor koordinat target ke kontroler Lengan Robot (RNV3) untuk dipindahkan ke wadah sortir masing-masing:
+* **Wadah Kiri:** Koin ($X = -150.0\text{ mm}, Y = 100.0\text{ mm}, Z = 45.0\text{ mm}$)
+* **Wadah Kanan:** Tutup Botol ($X = +150.0\text{ mm}, Y = 100.0\text{ mm}, Z = 55.0\text{ mm}$)
+* **Wadah Depan:** Charger ($X = 0.0\text{ mm}, Y = 180.0\text{ mm}, Z = 70.0\text{ mm}$)
+
+---
 
 ### B. Diagram Alur Sistem (End-to-End Pipeline)
 
 ```
-       [ Kamera Webcam USB ] (Rexus SW-10 @ --source 0)
+       [ Kamera Webcam USB ] (Rexus SW-10 @ 1280x720 HD)
                  │
                  ▼
-       [ Threaded Frame Capture ] (Zero-Latency Queue, 1280x720 @ 30 FPS)
+       [ Threaded Frame Capture ] (Zero-Latency Background Thread Queue @ 30 FPS)
                  │
                  ▼
        [ Model AI YOLOv8 ] (models/best.pt @ imgsz=1280, conf=0.25)
                  │  - Deteksi 3 Kelas: Koin (0), Tutup Botol (1), Charger (2)
-                 │  - Bounding Box & Class Confidence Score
+                 │  - Menghasilkan Bounding Box & Class Confidence Score
                  ▼
-       [ Smart Geometric & Optical Filters ]
-                 │  - Filter Rasio Aspek & Luas Bidang
-                 │  - Verifikasi Koin Logam vs Jari Manusia (HSV Saturation)
-                 │  - Isolasi Konveyor Hijau & Penolakan Latar Luar
+       [ Smart Geometric & Optical Filters ] (src/detector.py)
+                 │  - Validasi Aspek Rasio (Koin/Tutup: 0.50..1.85 | Charger: 0.25..4.00)
+                 │  - Proteksi Wajah / Kulit Manusia (is_human_skin_face, skin_frac > 0.48)
+                 │  - Koreksi Koin Silau Cermin (is_specular_metal_coin: saturasi < 0.20)
+                 │  - Verifikasi Saturasi Plastik Tutup Botol (tutup_berwarna: sat > 0.55)
                  ▼
-       [ Vacuum Suction Point Refinement (Khusus Charger) ]
-                 │  - Analisis orientasi pin colokan vs badan datar
-                 │  - Geser titik hisap ke pusat bidang datar (logo iT.)
-                 │  - Mencegah kebocoran hisap vakum pada colokan logam
+       [ Vacuum Suction Point Refinement ] (Khusus Charger)
+                 │  - Analisis orientasi kaki colokan logam (horizontal vs vertikal)
+                 │  - Geser titik hisap dari leher colokan ke pusat bidang datar logo iT.
+                 │  - Mencegah kebocoran hisap vakum pada celah pin colokan
                  ▼
-       [ Hand-to-Eye Coordinate Transformation ]
-                 │  - Mengubah piksel (u, v) ke Milimeter Fisik Robot (X, Y mm)
-                 │  - Inversi Sumbu X (Orientasi Kamera-Robot Berseberangan)
-                 │  - Ketinggian Z Otomatis (Koin=2mm, Tutup=12mm, Charger=28mm)
+       [ Penstabil Pelacakan Temporal ] (src/utils.py -> Penstabil)
+                 │  - Voting suara terbanyak multi-frame (anti-flicker)
+                 │  - Smoothing posisi kotak bergerak (Exponential Moving Average)
                  ▼
-       [ IPC Data Export (Atomic JSON Write) ] ──► outputs/target_robot.json
+       [ Hand-to-Eye Coordinate Transformation ] (src/coordinate_transform.py)
+                 │  - Mengubah piksel (u, v) ke Milimeter Fisik Robot (X, Y mm) via Homography
+                 │  - Inversi Sumbu X otomatis (kamera & robot saling berhadapan)
+                 │  - Ketinggian Z spesifik per benda (Koin=2mm, Tutup=12mm, Charger=28mm)
+                 ▼
+       [ Atomic JSON IPC Export ] ──► outputs/target_robot.json
                  │
                  ▼
        [ Pengontrol Lengan Robot (RNV3) ]
                  │  - Approach melayang di atas objek (Z + 25 mm)
                  │  - Turun ke Z_pick & Pompa Vakum ON
-                 │  - Angkat objek & Geser ke Wadah Drop (Koin/Tutup/Charger)
+                 │  - Angkat objek & Geser ke Wadah Drop (Koin / Tutup / Charger)
                  │  - Pompa Vakum OFF & Kembali Standby
 ```
 
 ---
 
-## 2. KRONOLOGI & PERJALANAN PENGEMBANGAN
+## 2. PRASYARAT & CARA MENJALANKAN SISTEM (GETTING STARTED)
 
-### Tahap 1: Inisialisasi & Pengumpulan Dataset Awal
-* **Dataset Publik (Roboflow):** Mengunduh dataset awal koin dan tutup botol via Roboflow API.
-* **Auto-labeling:** Membuat script otomatisasi pelabelan untuk mempercepat persiapan data latih.
-* **Eksperimen Kelas:** Sempat menguji penambahan kelas lain (seperti *charger*), namun akhirnya dievaluasi dan diputuskan untuk **fokus pada 2 kelas inti (Koin & Tutup Botol)** agar model memiliki spesialisasi tinggi dan tidak membingungkan robot.
+### A. Kebutuhan Sistem & Perangkat Keras
+* **Sistem Operasi:** macOS (Apple Silicon / Intel) atau Windows 10/11 (64-bit).
+* **Python:** Versi 3.10 hingga 3.12 (disarankan Python 3.12).
+* **Kamera:** Webcam USB eksternal (disarankan kamera dengan resolusi minimal 720p 30 FPS, misal Rexus SW-10).
+* **Konveyor:** Sabuk konveyor industri (lebar sabuk $\approx 150 - 200\text{ mm}$).
+* **Lengan Robot:** Robot arm 4-DOF / 6-DOF dengan suction cup pompa vakum (misal RNV3).
 
-### Tahap 2: Pengumpulan Dataset Mandiri & Background Negatif
-* **Masalah:** Model yang dilatih hanya dengan dataset publik kerap mendeteksi bayangan, meja, atau tangan sebagai koin.
-* **Solusi (`capture.py`):** Membuat modul pengambilan foto langsung dari webcam di meja konveyor asli. 
-* **Data Negatif (Latar Kosong):** Mengambil foto meja kosong, tangan, dan ruangan tanpa objek sebagai contoh negatif (*background images*), sehingga AI belajar membedakan latar belakang dari objek asli.
+### B. Instalasi Lingkungan Virtual (Virtual Environment)
+```bash
+# 1. Masuk ke direktori proyek
+cd ~/Documents/opencv_3class/sortir-yolo
 
-### Tahap 3: Pelatihan Ulang (Retraining) di Google Colab
-* **Ekspor Dataset Gabungan:** Menggabungkan dataset Roboflow + foto mandiri ke format YOLOv8 standar (`dataset_gabungan/`).
-* **Notebook Colab:** Melatih model `yolov8n.pt` selama puluhan epoch dengan akselerasi GPU Tesla T4 di Google Colab.
-* **Bobot Model Baru:** Menghasilkan model terbaik [`models/best.pt`](file:///Users/agusrisky/Documents/opencv/sortir-yolo/models/best.pt) serta mencadangkan model sebelumnya [`models/best-cadangan.pt`](file:///Users/agusrisky/Documents/opencv/sortir-yolo/models/best-cadangan.pt).
+# 2. Buat virtual environment (jika belum ada)
+python3 -m venv .venv
 
-### Tahap 4: Investigasi & Penyempurnaan False Positive Koin
-* **Masalah:** Saat diuji coba pada ratusan foto uji, koin sering tidak terdeteksi (hanya ~50% lolos).
-* **Akar Masalah:** Filter wajah/kulit manusia (`is_human_skin_face`) mendeteksi meja berwarna krem atau pantulan jari di dekat koin sebagai "wajah", lalu membuang koin tersebut.
-* **Solusi:** Menambahkan aturan prioritas: jika confidence YOLO $\ge 0.65$, koin langsung divalidasi sebagai koin asli tanpa terhalang warna meja. Rasio kelolosan uji koin melonjak ke **80.6% (238/295 gambar lolos presisi)**.
+# 3. Aktifkan virtual environment
+# Pada macOS / Linux:
+source .venv/bin/activate
+# Pada Windows PowerShell:
+# .venv\Scripts\Activate.ps1
 
-### Tahap 5: Perampingan Arsitektur (Menghapus Middleware)
-* **Awalnya:** Sempat dibuat server perantara HTTP middleware (`middleware_server.py`) untuk mengirim data via REST API.
-* **Evaluasi:** Menambah beban CPU, memperkenalkan latensi jaringan, rentan error port/koneksi, dan memperumit operasional tim robotik.
-* **Keputusan:** Middleware dihapus secara menyeluruh. Sistem beralih ke arsitektur **OpenCV Standalone**. Komunikasi data ke robot dialihkan ke metode file JSON real-time (`target_robot.json`) yang jauh lebih ringan, instan, dan anti-lag.
+# 4. Pasang seluruh dependensi resmi
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-### Tahap 6: Standarisasi Kode & Pembersihan Folder
-* Mengubah nama skrip berawalan angka (`01_`, `02_`, `03_`, `05_`) menjadi nama baku (`detect.py`, `capture.py`, dll).
-* Menghapus skrip `detect_dual.py` karena sistem terkonfirmasi hanya menggunakan 1 webcam USB.
-* Memindahkan file arsip lama dan screenshot ke folder [arsip_luar/](file:///Users/agusrisky/Documents/opencv/arsip_luar/) agar root workspace bersih dan rapi.
+### C. Pemetaan Indeks Kamera USB (`--source`)
+* **Pada macOS:**
+  - `--source 0` : Webcam USB Eksternal Rexus SW-10 (kamera utama menghadap konveyor).
+  - `--source 1` : Kamera Internal FaceTime MacBook Air.
+  - `--source 2` : Kamera Continuity iPhone (jika terhubung).
+* **Pada Windows:**
+  - `--source 0` : Kamera bawaan laptop (atau webcam USB jika hanya ada 1 kamera).
+  - `--source 1` : Webcam USB eksternal kedua.
 
-### Tahap 7: Modul Kalibrasi Robot & Desain Blueprint
-* Membangun modul transformasi affine / homography 4-titik (`src/coordinate_transform.py` dan `kalibrasi_robot.py`).
-* Menyusun ide inovatif: **Blueprint alas kerja di kertas manila** untuk memastikan akurasi jarak cm fisik dan mempercepat setup saat demo berpindah ruangan.
+### D. Menjalankan Program Utama
 
-### Tahap 8: Ekspansi Sistem ke 3 Kelas (Penambahan Kelas Charger - Jumat, 24 Okt 2026)
-* **Kebutuhan Lapangan:** Sistem diperluas untuk menyortir benda ke-3: **Kepala Charger HP** (selain Koin dan Tutup Botol).
-* **Autolabel Charger Versi 1:** Membangun `segment_charger_box()` adaptif pertama di `src/autolabel.py`.
-* **Dataset Awal Charger:** Mengumpulkan 383 foto charger manual di rumah di atas alas gelap (*dark mat*).
-* **Model 3 Kelas Pertama:** Berhasil melatih model 3 kelas pertama di Google Colab dan menghasilkan bobot `models/best.pt` (6,2 MB).
-* **Filter Ketajaman:** Menambahkan modul pembersih blur (`bersihkan_dataset_blur.py`) menggunakan variansi Laplacian untuk membuang foto goyang.
+```bash
+# 1. Menjalankan Deteksi Real-Time Standar (Warna per Kelas)
+python detect.py --source 0 --warna-kelas
 
-### Tahap 9: Perbaikan Struktur Workspace & Pemetaan Webcam USB macOS (Senin Pagi, 26 Okt 2026)
-* **Rename Folder Proyek:** Folder `opencv copy` diubah menjadi `opencv_3class` agar rapi dan representatif. Untuk menjaga terminal runner agent tetap valid tanpa memunculkan folder duplikat di Finder, dibuat symlink tersembunyi (`chflags hidden`).
-* **Audit & Mapping Kamera macOS:**
-  - `source 0` = Webcam Eksternal Rexus SW-10 (menghadap ke konveyor).
-  - `source 1` = Kamera Internal FaceTime MacBook Air.
-  - `source 2` = Kamera Continuity iPhone.
-  - Default pada `extra_capture_data.py` dan `detect.py` diselaraskan ke `--source 0`.
+# 2. Menjalankan Mode Otomatis Penuh Tanpa Sentuh Laptop (Auto-Vision Stop-and-Go)
+python sortir_otomatis.py --mode auto-vision --source 0
 
-### Tahap 10: Inovasi Refinement Titik Hisap Vacuum Charger (Senin, 26 Okt 2026)
-* **Masalah Mekanis Robot:** Kepala charger memiliki bentuk asimetris (badan plastik lebar + dua batang colokan logam sempit). Bounding box standar memiliki titik tengah $(cx, cy)$ yang jatuh di dekat leher colokan. Jika karet vakum robot RNV3 mendarat di area colokan, hisapan akan bocor (*air loss*) dan charger gagal terangkat.
-* **Solusi Algoritma Visi (`refine_charger_vacuum_center()` di `src/detector.py`):**
-  - Menganalisis orientasi colokan logam (horizontal vs vertikal).
-  - Menggeser titik target hisap secara dinamis ke **pusat permukaan bidang datar kepala charger** (area logo `iT.`).
-  - Menjamin hisapan karet vakum kedap udara (*airtight suction seal*).
+# 3. Menjalankan Mode Sensor Infrared Serial (Arduino USB)
+python sortir_otomatis.py --mode serial --port /dev/ttyUSB0 --baud 9600
 
-### Tahap 11: Investigasi & Perbaikan Engine Autolabel Konveyor Hijau Kantor (Senin Siang, 26 Okt 2026)
-* **Masalah Kritis Lapangan:** Saat mengambil 273 foto charger di atas konveyor sabuk hijau kantor, autolabel lama menghasilkan bounding box raksasa selebar 909 piksel.
-* **Akar Masalah:** Algoritma lama menganalisis piksel tepi frame (yang memuat meja putih dan laptop hitam di belakang konveyor). Karena tepi meja berwarna terang, algoritma mengira latarnya putih dan mencari objek gelap (`cv2.THRESH_BINARY_INV`), sehingga yang ditandai adalah **laptop hitam** dan **rel konveyor**, bukan charger putih!
-* **Solusi Engine Autolabel Baru (`src/autolabel.py`):**
-  - Dibuat **Mode Konveyor Hijau Khusus** (`green_pct > 0.08`).
-  - Mengisolasi pita konveyor hijau ($H \in [30, 95]$), mengecualikan laptop dan rel meja di luar batas.
-  - Mendeteksi charger putih ($S < 60, V > 125$) dengan margin proteksi dan filter kulit ($YCrCb$).
-  - **Hasil Validasi:** Bounding box pada `outputs/preview_charger_on_conveyor.jpg` membungkus kepala charger `[361, 157, 726, 480]` dengan akurasi $< 1$ piksel dari ground truth!
+# 4. Pengujian Baca Koordinat untuk Tim Robotik
+python contoh_baca_koordinat_robot.py --mode json
 
-### Tahap 12: Pemilahan & Audit Dataset Ketat (Senin Siang, 26 Okt 2026)
-* **Penyortiran Foto Blur & Oklusi:**
-  - 4 foto blur (Laplacian < 10) dipisahkan ke `sampah_blur/`.
-  - 28 foto tangan menutupi charger (>25% oklusi) dipisahkan ke `sampah_blur/`.
-  - 2 foto konveyor kosong di akhir dipindahkan ke `latar_negatif_manual/`.
-* **Koreksi Data Salah Folder:**
-  - Menangani 94 foto charger yang sempat tersimpan di folder tutup botol (karena lupa memencet tombol angka 3 saat capture).
-  - 94 foto charger dipindahkan otomatis ke `charger_capture_manual/`, sedangkan 30 foto tutup botol asli tetap dipertahankan.
-* **Hasil Akhir Dataset Gabungan (`dataset_gabungan/`):**
-  - **Koin:** 2.915 instance
-  - **Tutup Botol:** 5.230 instance (termasuk 104 foto riil di konveyor kantor)
-  - **Charger:** 542 instance (termasuk 333 foto riil di konveyor kantor)
-  - **Latar Negatif:** 134 foto kosong
-  - **Total:** 6.607 gambar bersih (5.153 train, 984 valid, 470 test), 0 error koordinat, 0 missing label.
-
-### Tahap 13: Simulasi Koordinat Fisik & Pipeline Training Google Colab (Senin Siang, 26 Okt 2026)
-* **Simulasi Visual Suction:** Membuat generator visualisasi titik hisap dan koordinat milimeter pick/drop robot RNV3 (`outputs/simulasi_hisap_charger.jpg`).
-* **Pembaruan Konfigurasi & Panduan Robot:** Menyelaraskan `robot_calib.json` dan `PANDUAN_TIM_ROBOTIK.md` untuk 3 kelas objek beserta ketinggian sumbu Z ($Z_{koin}=2\text{ mm}, Z_{tutup}=12\text{ mm}, Z_{charger}=28\text{ mm}$).
-* **Pembuatan Paket Fresh `sortir-yolo.zip` (1,4 GB):** Mengompresi seluruh dataset dan kode bersih tanpa membebani library lokal `.venv` dan file cache.
-* **Pipeline Training Cepat (Opsi B):** Mengonfigurasi mode `finetune` (20 epoch, ~5-6 menit) di Google Colab yang melanjutkan kecerdasan dari `models/best.pt` lama sambil mengunci adaptasi pada konveyor hijau kantor.
-
----
-
-## 3. TANTANGAN UTAMA, MASALAH (BUGS), & SOLUSI TEKNIS
-
-Berikut daftar kendala nyata yang ditemukan selama pengerjaan beserta solusinya:
-
-| No | Masalah yang Ditemukan | Penyebab Utama | Solusi Teknis yang Diterapkan |
-| :--- | :--- | :--- | :--- |
-| **1** | Koin kecil di konveyor tidak terdeteksi saat kamera agak tinggi | Resolusi input default YOLO (640x640) mengecilkan piksel koin hingga detailnya hilang | Mengubah default `imgsz=1280` pada detector sehingga objek koin kecil tetap tajam |
-| **2** | Koin ditolak / hilang saat di atas meja kayu/krem | Filter deteksi kulit manusia salah mengenali warna meja sebagai wajah | Menambahkan bypass: `if confidence >= 0.65: return True` sebelum filter kulit dieksekusi |
-| **3** | Baut dan ring bulat ikut terdeteksi saat confidence rendah (0.30 - 0.45) | Bentuk lingkaran baut mirip koin sehingga AI ragu-ragu di skor ~40% | Mengatur sweet spot confidence ke `0.55 - 0.60`. Baut otomatis gugur, koin asli tetap terdeteksi |
-| **4** | Kamera macbook yang terbuka saat dicolokkan webcam USB | Di macOS, saat webcam USB dicolok, OpenCV menetapkan webcam USB sebagai Index 0 dan kamera laptop bergeser ke Index 1 | Menjalankan dengan `--source 0` (bukan 1) |
-| **5** | Koordinat robot terbalik arah kiri dan kanan | Kamera dan robot dipasang berseberangan (saling berhadapan) | Menerapkan pembalikan sumbu X otomatis (`flip_x = True`) pada modul koordinat |
-| **6** | Bentuk konveyor terlihat trapesium (sudut kamera miring) | Distorsi perspektif kamera miring | Menggunakan matriks **Homography 4-titik** (`cv2.getPerspectiveTransform`) |
-| **7** | Titik hisap vakum meleset di leher colokan charger | Bounding box standar memiliki titik tengah $(cx, cy)$ yang jatuh di dekat colokan logam sempit | Algoritma `refine_charger_vacuum_center()` menggeser titik hisap ke bidang datar terluas kepala charger (area logo `iT.`) |
-| **8** | Autolabel lama salah menandai laptop hitam & rel konveyor | Border meja putih di luar konveyor dikira latar, sehingga autolabel mencari benda gelap (`THRESH_BINARY_INV`) | Membangun **Mode Konveyor Hijau Khusus**: mengisolasi pita sabuk hijau dan mendeteksi charger putih ($S < 60, V > 125$) dengan margin proteksi |
-| **9** | 94 Foto charger masuk ke folder tutup botol | Tombol angka 3 pada keyboard belum tertekan saat proses capture cepat di konveyor | Skrip audit otomatis memilah file mulai timestamp `115735_524` ke bawah dan merelokasinya ke `charger_capture_manual/` |
-| **10** | Tangan operator menutupi charger pada beberapa foto | Operator meletakkan atau memutar posisi charger saat kamera sedang merekam | Deteksi persentase kulit ($YCrCb$) pada area charger; jika oklusi $> 25\%$, foto otomatis dibuang ke `sampah_blur/` |
-| **11** | Error Colab `credential propagation was unsuccessful` | Konflik multi-akun Google (Akun A dan Akun B) saat menjalankan `drive.mount` | Bypass Google Drive dengan drag-and-drop langsung ke `/content/sortir-yolo.zip` atau gunakan jendela penyamaran (*Incognito*) |
-| **12** | Risiko domain shift jika memakai kamera iPhone | Komputasi fotografi iPhone (Auto-HDR & penajaman buatan) berbeda dengan sensor webcam USB Rexus | Standarisasi 100% data latih harus berasal dari Webcam USB Rexus yang sama dengan kamera produksi |
-| **13** | Rename folder workspace `opencv copy` ke `opencv_3class` memutus path runner agent | Runner shell mengharapkan path awal tetap ada | Membuat symlink tersembunyi `opencv copy -> opencv_3class` dengan flag `chflags hidden` |
-
----
-
-## 4. LOGIKA & FILTER CERDAS (SMART FILTER)
-
-AI Deep Learning (YOLO) sangat handal mengenali pola, namun terkadang bisa menghasilkan *false positive*. Oleh karena itu, modul [`src/detector.py`](file:///Users/agusrisky/Documents/opencv/sortir-yolo/src/detector.py) dilengkapi lapisan filter cerdas:
-
-### A. Validasi Geometri (Bentuk & Ukuran)
-1. **Aspect Ratio ($w / h$):** Koin dan tutup botol dari atas berbentuk lingkaran simetris. Benda yang terlalu lonjong (rasio $< 0.50$ atau $> 1.85$, seperti pulpen, obeng, atau jendela) otomatis dibuang.
-2. **Batas Ukuran Maksimal (`max_area_frac = 0.40`):** Benda yang memenuhi lebih dari 40% layar (seperti wajah manusia mendekat atau kardus besar) otomatis diabaikan.
-3. **Batas Ukuran Minimal (`min_size_px = 10`):** Menghilangkan bintik noise kamera.
-
-### B. Verifikasi Warna & Optik (HSV / YCrCb)
-1. **Bypass Koin Cerdas:** Jika confidence model terhadap koin $\ge 0.65$, koin langsung divalidasi tanpa terhalang warna meja krem.
-2. **Filter Kulit Manusia:** Memeriksa rentang krominans kulit ($Cr \in [133, 173]$ dan $Cb \in [77, 127]$) untuk menolak wajah atau tangan operator yang melintas agar tidak dikira koin/tutup botol.
-
-### C. Refinement Titik Hisap Vacuum Charger (`refine_charger_vacuum_center()`)
-1. **Tujuan:** Memastikan karet hisap pompa vakum robot arm RNV3 mendarat pada bidang datar kedap udara.
-2. **Mekanisme Kerja:**
-   - Memotong ROI kepala charger dari frame kamera.
-   - Menganalisis rasio lebar vs tinggi ($w / h$) untuk menentukan orientasi colokan logam (horizontal atau vertikal).
-   - Menggeser koordinat pusat $(cx, cy)$ sejauh offset dinamis menuju pusat badan plastik (area di bawah logo `iT.`).
-   - Mencegah karet hisap mendarat di celah antara dua pin colokan logam yang akan menyebabkan hisapan bocor.
-
-### D. Isolasi Sabuk Konveyor Hijau & Penolakan Latar Luar
-1. **Pita Konveyor Hijau:** Menggunakan rentang HSV hijau ($H \in [30, 95], S > 25, V > 20$) untuk mendeteksi batas sabuk konveyor.
-2. **Border Clearing (Margin Proteksi):** Area di luar sabuk (seperti laptop hitam, meja putih samping, dan rel aluminium) otomatis dipotong (*cropped out*) sehingga sistem autolabel dan deteksi hanya memproses benda yang benar-benar berada di atas sabuk berjalan.
-
-### B. Verifikasi Warna HSV (Tutup Botol)
-* Tutup botol umumnya terbuat dari plastik dengan warna pekat (biru, hijau, merah, kuning).
-* Sistem mengonversi area bounding box ke ruang warna HSV dan memeriksa nilai saturasi ($S$). Logam koin memiliki saturasi sangat rendah (keabu-abuan/perak/emas kusam), sedangkan tutup botol memiliki saturasi tinggi.
-
-### C. Jalur Bypass Koin Presisi Tinggi
-* Koin asli memiliki relief angka, garuda, dan tekstur logam. Jika model menghasilkan skor keyakinan $\ge 0.65$, sistem mempercayai hasil AI dan meloloskannya langsung tanpa terhalang warna permukaan meja.
-
----
-
-## 5. SISTEM KALIBRASI HAND-TO-EYE & INTEGRASI ROBOTIK
-
-### A. Konsep Dasar
-* **Hand-to-Eye (Eye-to-Hand):** Posisi kamera dipasang statis mengawasi meja kerja conveyor, sedangkan lengan robot bergerak di seberang kamera.
-* Kalibrasi ini mencari matriks transformasi $\mathbf{H}$ sehingga:
-  $$\begin{bmatrix} X_{robot} \\ Y_{robot} \\ 1 \end{bmatrix} = \mathbf{H} \times \begin{bmatrix} u_{kamera} \\ v_{kamera} \\ 1 \end{bmatrix}$$
-
-### B. Langkah Kerja `kalibrasi_robot.py`
-1. Tentukan 4 titik di atas meja conveyor yang dapat dijangkau oleh robot.
-2. Catat koordinat milimeter $(X, Y)$ masing-masing titik dari kontroler robot.
-3. Jalankan `python kalibrasi_robot.py --source 0`, lalu klik ke-4 titik tersebut di jendela video.
-4. Masukkan koordinat milimeternya $\rightarrow$ Tekan **`s`** untuk menyimpan ke [`robot_calib.json`](file:///Users/agusrisky/Documents/opencv/sortir-yolo/robot_calib.json).
-
-### C. Alur Pengiriman Target ke Robot (Atomic JSON IPC)
-Data deteksi diekspor ke file `outputs/target_robot.json` menggunakan teknik *atomic rename* (menulis ke file temporer lalu me-rename seketika) agar skrip robot tidak membaca file yang sedang setengah tertulis.
-
-**Contoh Payload JSON 3 Kelas:**
-```json
-{
-  "status": "TARGET_READY",
-  "timestamp": 1729601234.56,
-  "target": {
-    "class_name": "charger",
-    "label": "charger",
-    "confidence": 0.95,
-    "pixel_center": { "u": 520, "v": 310 },
-    "robot_mm": { "x": 12.5, "y": 145.0, "z": 28.0 },
-    "drop_mm": { "x": 0.0, "y": 180.0, "z": 70.0 },
-    "track_id": 4,
-    "catatan": "titik hisap digeser ke bidang datar logo iT."
-  }
-}
+# 5. Menjalankan Seluruh Pengujian Otomatis (Unit Testing)
+pytest -v
 ```
 
 ---
 
-## 6. INOVASI BLUEPRINT / ALAS ACUAN DI KERTAS MANILA
+## 3. ALUR PEMBUATAN PROYEK DARI NOL HINGGA SELESAI (LIFE-CYCLE)
 
-### A. Konsep "Calibration Base Mat" (Layout 3 Wadah)
-Untuk mengatasi masalah **tempat dan meja yang sering berpindah-pindah**, dibuat alas kerja presisi menggunakan kertas manila tebal yang digambari garis-garis acuan fisik (satuan cm/mm):
+Jika Anda ingin mereplikasi atau membangun proyek computer vision berbasis konveyor dari nol, ikuti 7 tahapan standar industri berikut:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ TAHAP 1:        │     │ TAHAP 2:        │     │ TAHAP 3:        │     │ TAHAP 4:        │
+│ Dataset Publik  │────►│ Capture Mandiri │────►│ Autolabel &     │────►│ Audit & Filter  │
+│ (Roboflow)      │     │ di Konveyor     │     │ Segmentasi Mask │     │ Foto Blur       │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                                                 │
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐              ▼
+│ TAHAP 7:        │     │ TAHAP 6:        │     │ TAHAP 5:        │     ┌─────────────────┐
+│ Integrasi Robot │◄────│ Smart Filters & │◄────│ Pelatihan AI    │◄────│ Penggabungan    │
+│ & Stop-and-Go   │     │ Suction Refine  │     │ di Google Colab │     │ Dataset Bersih  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+### Tahap 1: Eksplorasi & Pengunduhan Dataset Publik Roboflow
+1. Kunjungi [Roboflow Universe](https://universe.roboflow.com/) dan cari kata kunci objek (misal `coin-detection`, `bottle-cap`).
+2. Pilih dataset yang memiliki variasi pencahayaan dan latar belakang berbeda.
+3. Gunakan modul `download_datasets.py` untuk mengunduh dataset berformat YOLOv8 TXT.
+4. Lakukan pemetaan (*mapping*) kelas seragam agar indeks kelas teratur (`0: koin, 1: tutup_botol, 2: charger`).
+
+### Tahap 2: Pengambilan Dataset Mandiri & Background Negatif
+Dataset publik tidak memuat kondisi pencahayaan dan warna konveyor spesifik di pabrik/kantor Anda. Oleh karena itu, wajib mengambil foto mandiri:
+1. Jalankan `python extra_capture_data.py --source 0`.
+2. Gunakan hotkey keyboard untuk memisahkan folder penyimpanan foto otomatis:
+   * Tekan tombol **`1`** : Menyimpan foto Koin ke `datasets_raw/koin_capture_manual/`.
+   * Tekan tombol **`2`** : Menyimpan foto Tutup Botol ke `datasets_raw/tutup_botol_capture_manual/`.
+   * Tekan tombol **`3`** : Menyimpan foto Charger ke `datasets_raw/charger_capture_manual/`.
+   * Tekan tombol **`b`** : Mengambil **Latar Negatif** (konveyor kosong tanpa benda, tangan melintas, bayangan operator) ke `datasets_raw/latar_negatif_manual/`.
+   > [!IMPORTANT]
+   > Gambar latar negatif (*background images*) sangat krusial agar model AI tidak mengira pantulan meja atau permukaan sabuk konveyor sebagai objek sortir.
+
+### Tahap 3: Segmentasi & Autolabeling Adaptif (`src/autolabel.py`)
+Melabeli ribuan foto satu per satu dengan mouse (*labelImg*) memakan waktu berhari-hari. Sistem ini dilengkapi autolabel adaptif berbasis penglihatan komputer klasik:
+* **Mode Konveyor Hijau:** Algoritma mengisolasi pita sabuk konveyor hijau ($H \in [30, 95]$), memotong laptop atau meja di luar konveyor, dan membungkus objek kontras di atas sabuk hijau.
+* **Mode Alas Gelap:** Untuk pemotretan di atas mousepad hitam/alas gelap menggunakan segmentasi Otsu Thresholding.
+* Jalankan `python extra_autolabel_own.py` untuk menghasilkan anotasi koordinat ternormalisasi YOLO `(class_id, x_center, y_center, width, height)`.
+
+### Tahap 4: Pembersihan Foto Blur & Oklusi Tangan
+* Foto yang kabur akibat benda bergerak cepat atau getaran kamera akan menurunkan kualitas bobot model AI.
+* Jalankan `python bersihkan_dataset_blur.py`:
+  - Algoritma menghitung variansi Laplacian: $\text{Var}(\nabla^2 I)$. Foto dengan skor $< 10.0$ otomatis dipindahkan ke folder `sampah_blur/`.
+  - Algoritma mengecek warna kulit ($YCrCb$). Foto di mana tangan operator menutupi objek $> 25\%$ otomatis dibuang.
+
+### Tahap 5: Penggabungan Dataset (`merge_datasets.py`)
+* Menggabungkan dataset Roboflow + dataset foto mandiri bersih ke dalam folder `dataset_gabungan/` dengan rasio standar industri:
+  - **70% Training Set:** Digunakan model untuk mempelajari fitur visual.
+  - **20% Validation Set:** Digunakan untuk evaluasi berkala di setiap epoch.
+  - **10% Test Set:** Digunakan untuk audit independen setelah pelatihan usai.
+
+---
+
+## 4. PANDUAN LENGKAP PELATIHAN AI YOLOV8 (COLAB, FINE-TUNING, & RESUME)
+
+Pelatihan model deep learning membutuhkan akselerasi kartu grafis (GPU). Jika komputer lokal Anda tidak memiliki GPU NVIDIA bertenaga, gunakan **Google Colab** yang menyediakan GPU Tesla T4 (16 GB VRAM) secara gratis.
+
+### A. Struktur File Konfigurasi Data (`dataset_gabungan/data.yaml`)
+Pastikan file `data.yaml` mendefinisikan path dan nama kelas dengan benar:
+```yaml
+path: /content/sortir-yolo/dataset_gabungan
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 3
+names: ['koin', 'tutup_botol', 'charger']
+```
+
+---
+
+### B. Trik Penting: Training dari Nol (*Scratch*) vs Melanjutkan (*Fine-Tuning*)
+
+Banyak pemula melakukan kesalahan dengan **selalu melatih model dari awal (epoch 0)** setiap kali menambahkan sedikit data baru. Ini membuang waktu dan berisiko merusak pola visual yang sudah dipelajari sebelumnya.
+
+#### OPSI 1: Melatih dari Nol (*Training from Scratch*)
+* **Kapan digunakan:** Ketika arsitektur kelas dirombak total dari nol atau dataset baru berbeda drastis.
+* **Base Model:** `yolov8n.pt` (bobot umum dari COCO dataset).
+* **Kode Training:**
+  ```python
+  from ultralytics import YOLO
+
+  # Memuat bobot dasar umum
+  model = YOLO('yolov8n.pt')
+
+  # Melatih selama 80 - 100 epoch
+  results = model.train(
+      data='/content/sortir-yolo/dataset_gabungan/data.yaml',
+      epochs=80,
+      imgsz=640,
+      batch=16,
+      device=0,
+      name='sortir_scratch'
+  )
+  ```
+* **Kelemahan:** Membutuhkan waktu lama (35–50 menit di GPU T4).
+
+---
+
+#### OPSI 2: Melanjutkan Training dari Model Pintar (*Adaptive Fine-Tuning*) 🌟
+* **Kapan digunakan:** Anda sudah memiliki model `models/best.pt` yang sudah sangat pintar mengenali koin dan tutup botol (misal sudah dilatih 80 epoch), lalu Anda ingin menambahkan objek baru (charger) atau mengadaptasi pencahayaan konveyor kantor yang baru.
+* **Base Model:** Gunakan file `best.pt` Anda sendiri sebagai titik awal!
+* **Kode Training:**
+  ```python
+  from ultralytics import YOLO
+
+  # 1. Muat model best.pt hasil training sebelumnya (sudah pintar 2 kelas)
+  model = YOLO('/content/sortir-yolo/models/best.pt')
+
+  # 2. Latih HANYA 15 - 20 epoch tambahan!
+  results = model.train(
+      data='/content/sortir-yolo/dataset_gabungan/data.yaml',
+      epochs=20,          # Cukup 20 epoch (~5-6 menit!)
+      imgsz=640,          # Ukuran standar kompresi training
+      batch=16,
+      lr0=0.001,          # Learning rate awal lebih kecil agar bobot lama tidak rusak
+      lrf=0.01,
+      device=0,
+      name='sortir_finetune'
+  )
+  ```
+* **Keunggulan Besar:**
+  1. **Super Cepat:** Hanya membutuhkan waktu **~5 menit** di GPU Tesla T4.
+  2. **Anti-Lupa (*Preserve Feature Representations*):** Pengetahuan lama tentang tekstur relief koin dan warna tutup botol tetap melekat, sementara fitur charger langsung terintegrasi secara mulus.
+  3. **Hemat Kuota GPU Colab:** Tidak menghabiskan batas kuota komputasi harian Google Colab.
+
+---
+
+#### OPSI 3: Melanjutkan Training yang Terputus (*Resume Training*)
+Jika saat Anda sedang melatih model tiba-tiba koneksi internet terputus di epoch 50 (dari target 80 epoch), **jangan ulangi dari epoch 0!**
+Ultralytics YOLO menyimpan checkpoint berkala di file `last.pt`. Cukup jalankan perintah:
+
+```python
+from ultralytics import YOLO
+
+# Melanjutkan langsung dari epoch terakhir yang tersimpan
+model = YOLO('/content/sortir-yolo/runs/detect/sortir_scratch/weights/last.pt')
+model.train(resume=True)
+```
+Model akan otomatis melanjutkan dari epoch ke-51 hingga selesai 80 epoch tanpa kehilangan data apa pun.
+
+---
+
+### C. Mengapa Training Menggunakan `imgsz=640` tapi Inferensi Webcam Menggunakan `imgsz=1280`?
+> [!NOTE]
+> Ini adalah prinsip optimasi paling penting yang membedakan sistem amatir dari sistem industri:
+* **Saat Training (`imgsz=640`):** Dataset berisi ribuan gambar. Menggunakan resolusi 640 menghemat alokasi memori VRAM GPU, mempercepat komputasi backpropagation hingga 400%, dan mencegah overfitting pada noise detail kamera.
+* **Saat Inferensi Live di Webcam (`imgsz=1280`):** Kamera konveyor beresolusi 720p ($1280 \times 720$). Koin di konveyor fisik hanya selebar 50–70 piksel. Jika saat deteksi live gambar dipaksa susut ke 640, koin akan mengecil menjadi 25 piksel dan detail cetakan koin hancur. Dengan menetapkan `--imgsz 1280` saat inferensi live di [detect.py](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/detect.py), koin diproses pada skala asli 1:1 sehingga confidence deteksi mencapai **0.91 – 0.98**.
+
+---
+
+## 5. LAPISAN LOGIKA & FILTER CERDAS (SMART FILTERS)
+
+Model Deep Learning (YOLO) adalah pendeteksi berbasis probabilitas statistik. Dalam skenario nyata di pabrik, model bisa saja dipicu oleh pantulan lampu atau benda asing. Modul [`src/detector.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py) dilengkapi lapisan filter cerdas matematika & optik (*Rule-Based Post Processing*):
+
+### A. Validasi Geometri Fisik ([`validate_geometry`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L38-L71))
+1. **Aspek Rasio ($w / h$):**
+   * Koin dan tutup botol berbentuk bundar/elips simetris. Benda dengan rasio $< 0.50$ atau $> 1.85$ (seperti pulpen, penggaris, obeng) **otomatis ditolak**.
+   * Khusus kelas **Charger**, rasio aspek dilonggarkan ke $0.25 \le AR \le 4.00$ karena bentuk fisik charger berupa balok persegi panjang.
+2. **Batas Luas Area Layar (`max_area_frac`):**
+   * Objek koin/tutup botol yang menutupi $> 40\%$ layar (seperti wajah manusia yang mendekat atau kardus besar) otomatis diabaikan.
+   * Khusus charger, batas luas diizinkan hingga $55\%$.
+3. **Batas Dimensi Maksimal Adaptif:**
+   * Batas dimensi objek dibatasi hingga $65\%$ frame (atau $85\%$ untuk charger tegak), mencegah deteksi palsu pada dinding konveyor.
+
+---
+
+### B. Logika Anti-Silau Logam Koin ([`is_specular_metal_coin`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L172-L212)) 🪙
+* **Masalah Lapangan:** Koin perak di bawah sorotan lampu tegak lurus memantulkan cahaya cermin (*specular glare* dengan nilai kecerahan $V > 135$). Pantulan ini menghapus kontras cetakan timbul koin menjadi putih datar polos, sehingga model AI keliru menduga sebagai tutup botol putih dengan skor 95%.
+* **Solusi Zero-Retrain:**
+  - Koin logam silau memiliki karakteristik optik: saturasi warna mendekati nol ($S < 0.20$ dan $frac\_pekat < 0.18$ / monokromatik abu-abu perak).
+  - Tutup botol plastik riil selalu memiliki pigmen warna pekat ($S > 0.55$).
+  - Jika objek terdeteksi sebagai `tutup_botol` namun memenuhi kriteria lingkaran logam silau monokromatik, sistem **secara cerdas mengoreksi kembali kelasnya menjadi Koin** dengan catatan `[koreksi silau]`.
+
+---
+
+### C. Refinement Titik Hisap Vacuum Charger ([`refine_charger_vacuum_center`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L282-L322)) 🔌
+* **Tujuan:** Menjamin karet hisap hisapan pompa vakum robot arm RNV3 mendarat pada bidang datar plastik kedap udara.
+* **Mekanisme Kerja:**
+  1. Memotong crop bounding box charger.
+  2. Menerapkan segmentasi biner Otsu + operasi morfologi pembukaan (*morphological opening*).
+  3. Menganalisis rasio $w / h$ untuk mengetahui orientasi pin colokan (vertikal atau horizontal).
+  4. Menghitung distribusi densitas massa plastik vs kaki logam:
+     - Jika pin colokan berada di atas, titik hisap digeser ke bawah ($bias = 0.64$).
+     - Jika pin colokan berada di bawah, titik hisap digeser ke atas ($bias = 0.36$).
+  5. Titik hisap terkunci presisi di pusat bidang datar kepala charger (area di bawah logo `iT.`), mencegah kebocoran hisap vakum pada celah kaki steker logam.
+
+---
+
+### D. Filter Anti-Wajah & Kulit Manusia ([`is_human_skin_face`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L92-L108))
+* Menggunakan perpaduan ruang warna YCrCb ($Cr \in [133, 173], Cb \in [77, 127]$) dan HSV ($H \in [0, 25], S \in [35, 170], V \ge 50$).
+* Objek hanya ditolak sebagai wajah manusia jika memenuhi ambang batas ketat:
+  $$\text{skin\_frac} > 0.48 \quad \text{DAN} \quad \text{area\_frac} > 0.020 \quad \text{DAN} \quad \min(w, h) \ge 90\text{ px}$$
+* Ambang batas `0.48` memastikan charger di atas meja bersuhu warna hangat tidak tertolak, sementara wajah manusia asli yang melintas tetap tereliminasi.
+
+---
+
+### E. Penstabil Suara Terbanyak Multi-Frame ([`Penstabil`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/utils.py#L107-L230))
+* Mencegah kedipan (*flicker*) label pada video live dengan sistem voting riwayat 5 frame terakhir (*majority voting buffer*).
+* Dilengkapi *Exponential Moving Average (EMA)* untuk menghaluskan koordinat bounding box saat kamera terkena getaran mesin konveyor.
+
+---
+
+## 6. SISTEM KALIBRASI HAND-TO-EYE & INOVASI BLUEPRINT MANILA
+
+### A. Teori Transformasi Homography 2D
+Kamera terpasang miring (*angled perspective*) di atas meja konveyor. Transformasi linier sederhana ($X = a \cdot u + b$) tidak akurat karena adanya distorsi perspektif trapesium.
+Sistem menggunakan **Matriks Homography $3 \times 3$**:
+
+$$\begin{bmatrix} X_{robot} \\ Y_{robot} \\ 1 \end{bmatrix} \sim \mathbf{H} \begin{bmatrix} u_{kamera} \\ v_{kamera} \\ 1 \end{bmatrix} = \begin{bmatrix} h_{11} & h_{12} & h_{13} \\ h_{21} & h_{22} & h_{23} \\ h_{31} & h_{32} & h_{33} \end{bmatrix} \begin{bmatrix} u \\ v \\ 1 \end{bmatrix}$$
+
+Matriks $\mathbf{H}$ dihitung menggunakan algoritma RANSAC dari 4 pasang titik kalibrasi yang dipilih lewat program GUI `kalibrasi_robot.py`.
+
+---
+
+### B. Inovasi "Calibration Base Mat" di Kertas Manila
+
+Untuk mengatasi masalah meja yang sering berpindah saat pameran atau demonstrasi, dibuat alas kerja presisi menggunakan kertas manila tebal:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -294,264 +398,163 @@ Untuk mengatasi masalah **tempat dan meja yang sering berpindah-pindah**, dibuat
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### B. Manfaat Utama Blueprint:
-1. **Zero-Setup Time:** Saat demo di tempat baru, cukup gelar kertas manila di meja, posisikan alat tepat pada garis blueprint, dan sistem langsung siap digunakan.
-2. **Tidak Perlu Kalibrasi Berulang:** Nilai `robot_calib.json` yang sudah tersimpan tetap valid karena geometri fisik terjaga 100% konsisten.
-3. **Koordinat Nyata:** Titik kalibrasi $A, B, C, D$ terukur pasti dengan penggaris fisik nyata dari titik `(0, 0)` basis robot.
+**Keuntungan Operasional Blueprint:**
+1. **Zero-Setup Time:** Saat pindah ruangan, cukup bentangkan kertas manila di meja dan letakkan dudukan konveyor, robot, dan webcam tepat di atas garis pola.
+2. **Tanpa Perlu Kalibrasi Ulang:** Nilai matriks pada `robot_calib.json` tetap valid 100% karena posisi geometris fisik terkunci sempurna.
 
 ---
 
-## 7. STRUKTUR FILE & PENJELASAN MODUL
+### C. Alur Pengiriman Target ke Robot (Atomic JSON IPC)
+Data target diekspor ke file `outputs/target_robot.json` menggunakan teknik *atomic write* (menulis ke file temporer `.tmp` lalu me-rename seketika) agar kontroler robot di sistem operasi Windows tidak mengalami konflik *file-locking*.
+
+**Contoh Payload JSON Target Robot:**
+```json
+{
+  "status": "TARGET_READY",
+  "timestamp": 1793068150.56,
+  "waktu_baca": "2026-10-27 09:29:10",
+  "target": {
+    "class_name": "charger",
+    "label": "Charger",
+    "confidence": 0.81,
+    "pixel_center": [681, 569],
+    "robot_mm": {
+      "x": 12.5,
+      "y": 145.0,
+      "z": 28.0
+    },
+    "drop_mm": {
+      "x": 0.0,
+      "y": 180.0,
+      "z": 70.0
+    },
+    "track_id": 3,
+    "catatan": "titik hisap vacuum di badan datar logo iT."
+  },
+  "total_objek": 3,
+  "daftar_objek": [...]
+}
+```
+
+---
+
+## 7. SISTEM SORTIR OTOMATIS PENUH (100% HANDS-FREE / STOP-AND-GO)
+
+Untuk implementasi demonstrasi atau operasional pabrik nyata, **tidak boleh ada operator yang menekan tombol keyboard laptop**. Seluruh siklus dijalankan secara otonom oleh modul [`sortir_otomatis.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/sortir_otomatis.py):
+
+### A. Alur Kerja Stop-and-Go Inspection
+1. **Benda Tiba:** Sabuk konveyor membawa barang masuk ke area jangkauan robot.
+2. **Trigger Konveyor Berhenti:**
+   * **Opsi Hardware:** Sensor Infrared (IR) mendeteksi benda dan Arduino USB mematikan relay konveyor.
+   * **Opsi Vision:** Kamera mendeteksi otomatis saat titik tengah benda berhenti diam (*stationary detector* selama $> 0.3$ detik).
+3. **Single-Shot Snapshot:** Kamera mengambil 1 foto berkualitas tinggi saat benda diam sempurna. Koordinat milimeter terkunci pasti tanpa jitter.
+4. **Penyaringan Kelas Target Sortir:**
+   * **JIKA TARGET (Koin / Tutup / Charger):** Koordinat diekspor ke `target_robot.json`. Lengan robot bergerak ke $(X, Y, Z_{pick})$, mengaktifkan pompa hisap vakum, mengangkat benda, dan memindahkan ke wadah tujuan.
+   * **JIKA BUKAN TARGET:** Lengan robot tetap standby, dan konveyor langsung diaktifkan kembali membawa benda berikutnya.
+
+---
+
+## 8. STRUKTUR FILE & PENJELASAN MODUL PROYEK
 
 ```
 opencv_3class/
-├── .gitignore
-├── sortir-yolo.zip                  # Paket arsip bersih (1,4 GB) untuk Google Colab
-├── arsip_luar/                      # Backup dokumentasi & screenshot lama
-└── sortir-yolo/                     # DIREKTORI UTAMA PROYEK
-    ├── README.md                    # Dokumentasi operasional & cheat sheet
-    ├── DOKUMENTASI.md               # Knowledge base & catatan teknis lengkap (file ini)
-    ├── PANDUAN_TIM_ROBOTIK.md       # Panduan khusus untuk rekan tim robotik (3 kelas)
-    ├── robot_calib.json             # Konfigurasi matriks kalibrasi & wadah drop
-    ├── requirements.txt             # Daftar library Python
-    ├── pytest.ini                   # Konfigurasi pengujian otomatis
+├── .gitignore                       # Proteksi kredensial API & file cache lokal
+├── DOKUMENTASI.md                   # Master Technical Knowledge Base (file ini)
+├── WORK_DOKUMENTATION.md            # Log kronologis laporan kerja mingguan
+├── PANDUAN_TIM_ROBOTIK.md           # Panduan integrasi khusus rekan tim robotik Windows
+├── robot_calib.json                 # Parameter matriks Homography & koordinat wadah drop
+├── requirements.txt                 # Dependensi pustaka Python
+├── pytest.ini                       # Konfigurasi automated testing
+│
+└── sortir-yolo/                     # DIREKTORI KODE UTAMA
+    ├── detect.py                    # Program utama visualisasi real-time (imgsz=1280, conf=0.25)
+    ├── sortir_otomatis.py           # Controller sortir otonom 100% hands-free (Stop-and-Go)
+    ├── sortir_vision_api.py         # Modul API visi mandiri siap panggil oleh skrip robot
+    ├── contoh_baca_koordinat_robot.py # Demo baca koordinat robot (Mode JSON / API / Infrared)
+    ├── kalibrasi_robot.py           # GUI interaktif kalibrasi 4-titik kamera ke robot mm
     │
-    ├── detect.py                    # Program utama deteksi real-time webcam/gambar (imgsz=1280)
     ├── capture.py                   # Perekam sampel gambar baru standar
-    ├── extra_capture_data.py        # Perekam sampel multi-kelas dengan hotkey 1, 2, 3
-    ├── extra_autolabel_own.py       # Engine autolabel mandiri adaptif (konveyor hijau + alas gelap)
-    ├── merge_datasets.py            # Script penggabung dataset latih/validasi/test
-    ├── bersihkan_dataset_blur.py    # Skrip filter otomatis foto blur & goyang
-    ├── kalibrasi_robot.py           # GUI interaktif kalibrasi kamera ke koordinat robot
-    ├── sortir_vision_api.py         # Modul API visi mandiri siap panggil
-    ├── contoh_baca_koordinat_robot.py # Script pengujian baca koordinat untuk tim robot
+    ├── extra_capture_data.py        # Perekam data multi-kelas keyboard 1, 2, 3, b
+    ├── extra_autolabel_own.py       # Engine autolabel adaptif konveyor hijau & alas gelap
+    ├── bersihkan_dataset_blur.py    # Skrip filter otomatis foto blur & oklusi kulit
+    ├── merge_datasets.py            # Penggabung dataset Roboflow + mandiri (70/20/10)
     │
     ├── colab/
-    │   └── Training_YOLO_Colab.ipynb # Notebook pelatihan T4 GPU Google Colab (Scratch / Finetune)
+    │   └── Training_YOLO_Colab.ipynb # Notebook pelatihan Google Colab (Scratch & Finetune)
     │
     ├── models/
-    │   ├── best.pt                  # Model terlatih utama (YOLOv8)
-    │   └── best-cadangan.pt         # Cadangan model sebelumnya
+    │   └── best.pt                  # Bobot neural network YOLOv8 utama (6,2 MB)
+    │
     ├── outputs/
     │   ├── target_robot.json        # File IPC koordinat real-time ke robot
     │   ├── simulasi_hisap_charger.jpg # Visualisasi titik hisap vacuum cup pada charger
     │   └── preview_charger_on_conveyor.jpg # Bukti validasi bounding box autolabel
-    ├── src/
-    │   ├── autolabel.py             # Algoritma segmentasi konveyor hijau & thresholding
-    │   ├── camera.py                # Wrapper kamera OpenCV + Threaded Capture anti-lag
-    │   ├── config.py                # Parameter konfigurasi global & kelas target
-    │   ├── coordinate_transform.py  # Logika matematika konversi piksel ke milimeter
-    │   ├── detector.py              # Engine deteksi YOLOv8 + Refine Vacuum Center Charger
-    │   └── utils.py                 # Utilitas anotasi visual, Kalman filter, & CSV logger
-    └── tests/                       # 45 skenario pengujian unit otomatis (100% lulus)
-```
-    ├── detect.py                    # Program utama deteksi real-time webcam/gambar
-    ├── capture.py                   # Perekam sampel gambar baru / dataset tambahan
-    ├── kalibrasi_robot.py           # GUI interaktif kalibrasi kamera ke koordinat robot
-    ├── sortir_vision_api.py         # Modul API visi mandiri siap panggil
-    ├── contoh_baca_koordinat_robot.py # Script pengujian baca koordinat untuk tim robot
-    ├── autolabel_tutup_botol.py     # Script auto-labeling dataset
-    ├── download_datasets.py         # Script pengunduh dataset Roboflow
-    ├── merge_datasets.py            # Script penggabung dataset latih/validasi
     │
-    ├── models/
-    │   ├── best.pt                  # Model terlatih utama (YOLOv8)
-    │   └── best-cadangan.pt         # Cadangan model sebelumnya
     ├── src/
-    │   ├── camera.py                # Wrapper kamera OpenCV + auto fallback index
-    │   ├── config.py                # Parameter konfigurasi global
-    │   ├── coordinate_transform.py  # Logika matematika konversi piksel ke milimeter
-    │   ├── detector.py              # Engine deteksi YOLOv8 + Smart Geometric Filter
-    │   └── utils.py                 # Utilitas anotasi visual & CSV logger
-    └── tests/                       # 41 skenario pengujian unit otomatis
+    │   ├── autolabel.py             # Algoritma segmentasi sabuk hijau konveyor & HSV
+    │   ├── camera.py                # Wrapper kamera OpenCV + Threaded Capture anti-lag
+    │   ├── config.py                # Parameter konfigurasi global & palet warna kelas
+    │   ├── coordinate_transform.py  # Logika matematika Homography piksel ke milimeter
+    │   ├── detector.py              # Engine YOLOv8 + Smart Filters + Refine Vacuum Center
+    │   └── utils.py                 # Anotasi visual HUD, Kalman filter, & Penstabil voting
+    │
+    └── tests/                       # 49 skenario pengujian unit otomatis (100% lolos)
 ```
 
 ---
 
-## 8. RINGKASAN PERINTAH CEPAT (CHEAT-SHEET)
+## 9. RINGKASAN PERINTAH CEPAT (CHEAT-SHEET) OPERASIONAL
 
-### Persiapan Lingkungan:
+### Persiapan Lingkungan Terminal:
 ```bash
-cd ~/Documents/opencv/sortir-yolo
+cd ~/Documents/opencv_3class/sortir-yolo
 source .venv/bin/activate
 ```
 
-### Menjalankan Program:
+### Eksekusi Program:
 ```bash
-# 1. Deteksi Real-Time Standar (Webcam USB)
-python detect.py --source 0
-
-# 2. Deteksi dengan Warna Kotak Berbeda (Koin=Emas, Tutup=Biru)
+# 1. Deteksi Real-Time Standar (Koin=Emas, Tutup=Biru, Charger=Hijau)
 python detect.py --source 0 --warna-kelas
 
-# 3. Deteksi dengan Confidence Optimal (Sweet Spot Anti-Baut)
-python detect.py --source 0 --conf 0.55 --warna-kelas
+# 2. Deteksi pada Kamera FaceTime Laptop (Source 1)
+python detect.py --source 1 --warna-kelas
 
-# 4. Ambil Foto Sampel Baru / Dataset Tambahan
-python capture.py --source 0
-
-# 5. Kalibrasi Koordinat Kamera ke Meja Robot
-python kalibrasi_robot.py --source 0
-
-# 6. Menjalankan Seluruh Unit Test (41/41 Tests)
-pytest -q
-```
-
-### Tombol Cepat Keyboard saat Jendela Kamera Terbuka:
-* **`q` / `ESC`** : Keluar dari program
-* **`w`** : Toggle warna kotak tiap kelas (kuning koin vs biru tutup)
-* **`s`** : Simpan screenshot ke folder `outputs/`
-* **`c`** : Simpan data koordinat saat itu ke file CSV
-* **`+` / `-`** : Naikkan / turunkan confidence threshold secara langsung
-* **`t`** : Toggle object tracking (ByteTrack)
-* **`f`** : Toggle filter geometri cerdas (ON/OFF)
-
----
-
-## 9. BEST PRACTICES & TIPS MENGHADAPI KASUS SERUPA
-
-Jika Anda membuat proyek *Computer Vision + Robotika* serupa di masa depan, terapkan prinsip-prinsip ini:
-
-1. **Gunakan `imgsz` Sesuai Ukuran Objek:**
-   Objek kecil (seperti koin, mur, baut) membutuhkan resolusi inferensi lebih tinggi (misal `imgsz=1280`). Jangan paksakan 640x640 jika objek fisik di kamera berukuran kecil.
-2. **Kombinasikan AI Deep Learning dengan Rule-Based Filter:**
-   Model AI hebat dalam mengenali objek, tetapi filter matematika sederhana (seperti batasan rasio aspek, rentang luas, atau nilai warna HSV) sangat ampuh menjadi lapisan pertahanan terakhir dari *false positive*.
-3. **Cari "Sweet Spot" Nilai Confidence:**
-   Jangan menyetel confidence terlalu rendah ($< 0.40$) karena benda bulat asing akan mudah ikut terdeteksi. Setel di rentang $0.50 - 0.60$ agar benda asing otomatis tertolak sementara objek asli tetap terdeteksi stabil.
-4. **Hindari Cahaya Sorot Tegak Lurus pada Logam:**
-   Benda logam memantulkan cahaya lampu seperti cermin (*specular glare*), yang bisa menghapus detail permukaan koin. Gunakan pencahayaan menyebar (*diffused lighting*) atau arahkan lampu dari sudut samping.
-5. **Gunakan Alas Blueprint (Base Mat) untuk Demo:**
-   Dalam robotika fisik, konsistensi posisi adalah kunci. Membuat blueprint di karton manila menghemat waktu setup hingga 90% saat harus melakukan demonstrasi di lokasi yang berpindah-pindah.
-6. **Desain Komunikasi yang Sederhana (Decoupled IPC):**
-   Hindari arsitektur jaringan yang terlalu rumit jika kamera dan pengendali robot berada di lingkungan lokal. Pertukaran data lewat file JSON atomik atau modul API lokal jauh lebih tangguh, minim bug, dan tanpa latensi jaringan.
-
----
-
-## 10. INVESTIGASI & PENYELESAIAN BUG DETEKSI TEPI (26 OKTOBER 2026)
-
-### Gejala Masalah:
-Pada pengujian langsung di konveyor fisik (rekaman jam 13:13:11 WIB), file log `outputs/target_robot.json` mencatat koin yang baru masuk terdeteksi sebagai `tutup_botol` dengan confidence 0.447 pada koordinat $u = 1258, v = 176$.
-
-### Analisis Akar Masalah (Root Cause Analysis):
-1. **Objek Terpotong di Batas Tepi Kamera (*Boundary Ingress Truncation*):**
-   * Resolusi frame kamera adalah 1280 × 720 piksel ($u \in [0, 1279]$).
-   * Titik $u = 1258$ berarti koin baru saja menyentuh jangkauan kamera dan terpotong oleh dinding tepi kanan frame (jarak ke tepi hanya 22 piksel).
-   * Karena hanya tampak setengah lingkaran / busur lengkung tanpa relief tengah koin, model mendeteksi lengkungan bibir perak tersebut mirip dengan bibir melingkar plastik (*rim*) tutup botol.
-2. **Threshold Confidence Default Terlalu Longgar (`conf = 0.25`):**
-   * Model sebenarnya sangat ragu-ragu (confidence hanya 0.447 atau 44.7%).
-   * Pada koin utuh di tengah konveyor, model baru (`models/best.pt`) memiliki akurasi **99.5% (AP50 = 0.9947)** dengan confidence stabil di atas **0.85 - 0.98**.
-   * Karena default sistem sebelumnya adalah 0.25, deteksi lemah ini tetap diloloskan ke JSON target robot.
-3. **Celah Filter ROI & Fallback Target:**
-   * Di fungsi `choose_best_target`, bila tidak ada objek di dalam area kerja robot (ROI), sistem secara keliru melakukan fallback ke objek di luar ROI. Lengan robot seharusnya menolak mengambil objek yang berada di luar jangkauan fisik ($X = -216.3\text{ mm}$).
-
-### Solusi Permanen & Pembaruan Sistem yang Diterapkan:
-1. **Penerapan Edge Margin Guard (`edge_margin = 15`) di `src/detector.py`:**
-   * Ditambahkan inspeksi otomatis batas tepi frame kamera pada `validate_geometry()`.
-   * Objek yang menyentuh batas dinding frame ($x_1 \le 15$ atau $x_2 \ge W - 15$ atau $y_1 \le 15$ atau $y_2 \ge H - 15$) **otomatis ditolak** hingga objek meluncur utuh ke dalam konveyor.
-2. **Penyesuaian Sweet Spot Confidence Default (`conf = 0.45`):**
-   * Mengubah default confidence di `detect.py` dan `sortir_vision_api.py` dari `0.25` ke `0.45`.
-   * Koin asli (0.96+), tutup botol asli (0.98+), dan charger asli (0.94+) tetap terdeteksi 100%, sementara seluruh false positive tepi dan bayangan remang tereliminasi.
-3. **Proteksi Ketat ROI di `src/coordinate_transform.py`:**
-   * `choose_best_target` kini secara ketat mengembalikan `None` (`NO_TARGET`) jika tidak ada target di dalam ROI aktif, mencegah lengan robot bergerak ke koordinat berbahaya di luar batas konveyor.
-4. **Verifikasi Unit Test:**
-   * Seluruh 45 unit test (100%) lolos pengujian (`pytest -q` -> `45 passed`).
-
----
-
-## 11. PENYELESAIAN BUG KOIN SILAU DIKIRA TUTUP BOTOL (26 OKTOBER 2026, 15:35 WIB)
-
-### Gejala Masalah (Frame `deteksi_20261026_140141`):
-Pada pengujian 6 objek di atas konveyor:
-* 3 koin lain terdeteksi tepat sebagai `Koin` (94%, 85%, 73%).
-* Tutup botol oranye terdeteksi tepat sebagai `Tutup Botol` (97.5%).
-* Charger putih terdeteksi tepat sebagai `Charger` (83%).
-* **1 koin perak di posisi kanan bawah `(u=724, v=321)` dikira Tutup Botol dengan confidence 95%.**
-
-### Akar Masalah (*Specular Glare Hotspot*):
-1. **Titik Pantul Cermin Lampu:** Di titik `u=724`, lampu atas memantulkan sinar langsung ke lensa kamera. Permukaan koin perak mengalami *overexposure* (kecerahan rata-rata 224 dari 255), sehingga tekstur relief cetakan timbul koin terhapus menjadi putih datar polos.
-2. **Bias Data Roboflow:** Dataset training `tutup_botol` mengandung foto tutup botol plastik putih polos. Model AI mencocokkan lingkaran putih datar tersebut sebagai tutup botol putih.
-3. **Karakteristik Fisik Nyata:** Tutup botol fisik tim robotik adalah plastik berwarna pekat (saturasi warna $S > 0.60$), sedangkan koin perak silau bersifat monokromatik / desaturasi ($S = 0.07$ atau 7%).
-
-### Solusi Software (*Zero-Retrain / Tanpa Ubah best.pt*):
-1. **Fitur `is_specular_metal_coin` di `src/detector.py`:**
-   * Memeriksa apakah benda yang diduga tutup botol memiliki ciri fisik koin silau: bentuk lingkaran/elips ($0.65 \le AR \le 1.50$), ukuran koin ($w, h \le 230$ px), saturasi warna sangat rendah ($S < 0.20$ dan $frac\_pekat < 0.18$), serta pantulan kecerahan tinggi ($V > 135$).
-   * Jika kriteria terpenuhi, sistem secara cerdas **mengoreksi kembali kelasnya menjadi Koin** dengan catatan `[koreksi silau]`.
-2. **Hasil Uji Langsung:**
-   * Diuji langsung pada frame `deteksi_20261026_140141_940.jpg`: Objek `(724, 321)` berhasil 100% terkoreksi menjadi `Koin [koreksi silau]` dan diekspor ke `target_robot.json` dengan koordinat pick koin ($Z = 2.0\text{ mm}$, container drop koin).
-   * Seluruh **46 unit test** (`pytest -v`) lolos 100%. Model `models/best.pt` tetap murni tanpa disentuh.
-
----
-
-## 12. SISTEM SORTIR OTOMATIS PENUH (100% HANDS-FREE / TANPA SENTUH LAPTOP)
-
-### Arsitektur Kasus Nyata di Lapangan (Real Production Case):
-Untuk penggunaan di pabrik / demonstrasi otomatis penuh, **tidak boleh ada operator yang menekan tombol keyboard di laptop**. Sistem harus berjalan secara *autonomous loop* (*Stop-and-Go*):
-
-1. **Trigger Kedatangan Benda (Sensor IR / Auto-Vision):**
-   * Saat konveyor membawa barang dan menyentuh sensor Infrared, konveyor otomatis berhenti.
-2. **Pengambilan Titik Statis (Single-Shot Snapshot):**
-   * Kamera secara instan mengambil 1 foto saat benda diam sempurna. Titik $(X, Y, Z)$ dikunci (tidak berfluktuasi/jitter).
-3. **Penyaringan Kelas Target Sortir:**
-   * Jika kelas benda terdaftar dalam target ambil (misal `["koin", "charger"]`): Lengan robot RNV3 bergerak mengambil benda dan memindahkan ke wadah tujuan.
-   * Jika BUKAN target sortir (misal `tutup_botol`): Lengan robot diam saja, dan konveyor langsung dinyalakan kembali membawa benda berikutnya.
-
-### Modul Pengendali Otomatis (`sortir_otomatis.py`):
-Tersedia skrip mandiri `sortir_otomatis.py` dengan 3 mode operasi:
-```bash
-# Mode 1: Auto-Vision (Kamera otomatis mendeteksi ketika benda diam di konveyor)
+# 3. Mode Sortir Otomatis Penuh (Auto-Vision Trigger)
 python sortir_otomatis.py --mode auto-vision --source 0
 
-# Mode 2: Hardware Sensor Infrared Serial (Arduino USB)
+# 4. Mode Sortir Sensor Hardware Infrared Serial Arduino
 python sortir_otomatis.py --mode serial --port /dev/ttyUSB0 --baud 9600
 
-# Mode 3: Server REST API (FastAPI / Uvicorn untuk pemanggilan lintas laptop)
-python sortir_otomatis.py --mode server --port 8000
+# 5. Kalibrasi Homography 4-Titik Meja Konveyor
+python kalibrasi_robot.py --source 0
+
+# 6. Menjalankan Seluruh Automated Unit Testing (49 Tests)
+pytest -v
 ```
+
+### Tombol Kontrol Keyboard di Jendela Kamera:
+* **`q` / `ESC`** : Keluar dari program.
+* **`w`** : Mengaktifkan warna kotak pembeda per kelas (Emas = Koin, Biru/Cyan = Tutup Botol, Hijau = Charger).
+* **`s`** : Menyimpan tangkapan layar (*screenshot*) ke folder `outputs/`.
+* **`c`** : Mengekspor seluruh data koordinat saat itu ke `outputs/koordinat.csv`.
+* **`t`** : Mengaktifkan / mematikan pelacak objek bergerak (*ByteTrack Object Tracking*).
+* **`f`** : Mengaktifkan / mematikan filter geometri cerdas (*Smart Geometric Filters*).
+* **`r`** : Mengaktifkan zona batas kerja konveyor (*Conveyor Region of Interest / ROI*).
+* **`+` / `-`** : Menaikkan / menurunkan ambang batas confidence secara live di layar.
 
 ---
 
-## 13. INVESTIGASI & PENYELESAIAN: MENGAPA OBJEK SANGAT SULIT TERDETEKSI (27 OKTOBER 2026)
+## 10. BEST PRACTICES & TIPS MENGHADAPI KASUS SERUPA
 
-### A. Gejala Masalah (User Report)
-Pada pengujian langsung di konveyor fisik, sistem tampak "sangat sulit atau makin sulit mendeteksi objek", bahkan pada beberapa frame uji (misal frame `deteksi_20261027_090420_886` yang memuat 3 benda nyata: 2 tutup botol dan 1 koin), layar output OpenCV melaporkan **0 objek terdeteksi**.
-
-### B. Audit Mendalam & Penemuan Akar Masalah (Empirical Audit)
-Setelah penelusuran menyeluruh pada seluruh pipeline deteksi, ditemukan kombinasi **4 pembatas (bottleneck)** yang menyebabkan hilangnya objek secara masif:
-
-1. **Resolusi Input AI Diperkecil dari 1280 ke 640 (`--imgsz 640`):**
-   * *Akar Masalah:* Resolusi webcam adalah 720p ($1280 \times 720$). Koin di atas konveyor memiliki diameter asli hanya sekitar 50–80 piksel. Ketika gambar diperkecil 50% menjadi resolusi 640, koin mengecil drastis menjadi hanya 25–40 piksel.
-   * *Dampak Arsitektur YOLOv8:* Pada piramida fitur terkecil ($P_3$, stride 8), koin 25 piksel hanya diwakili oleh bidang $3 \times 3$ sel. Fitur relief dan siluet bundar koin terhapus oleh interpolasi downsampling, menyebabkan confidence koin anjlok dari 0.91 menjadi $< 0.05$ (hilang total).
-2. **Ambang Batas Confidence Terlalu Tinggi (`conf = 0.45`):**
-   * *Akar Masalah:* Dalam kondisi pencahayaan ruang konveyor nyata (cahaya difus, bayangan, sedikit miring), objek riil sering kali menghasilkan skor confidence antara `0.28` hingga `0.44` (misal tutup botol 0.32, koin 0.36, charger 0.40).
-   * *Dampak:* Threshold 0.45 memotong deteksi-deteksi valid ini sebelum sempat diolah atau distabilkan oleh buffer voting multi-frame (`Penstabil`). Pada video real-time, skor yang berfluktuasi di sekitar 0.42–0.46 menyebabkan bounding box berkedip (*flicker*) dan ID pelacak ByteTrack putus.
-3. **Filter Batas Tepi (`edge_margin = 15`) Terlalu Agresif:**
-   * *Akar Masalah:* Logika `validate_geometry` menolak objek jika koordinat kotaknya menyentuh margin 15 piksel dari tepi frame ($y_1 \le 15$ atau $y_2 \ge H - 15$).
-   * *Dampak Nyata:* Pada frame `deteksi_20261027_090420_886`, tutup botol oranye (conf 0.93, lebar 198 px, tinggi 127 px) berada di posisi konveyor atas dengan $y_1 = 6$. Karena $6 \le 15$, objek besar dan jelas ini langsung dibuang oleh filter geometri!
-4. **Pembatasan Dimensi Tinggi Maksimal pada Charger:**
-   * *Akar Masalah:* Aturan lama `h > frame_height * 0.65` menolak objek dengan tinggi $> 468$ px pada frame 720p. Charger yang ditaruh berdiri (*upright*) atau kamera yang sedikit dekat dapat mencapai tinggi 510 px meskipun luas areanya hanya 28.9% dari layar ($< 55\%$).
-
-### C. Tabel Bukti Empiris (Sebelum vs Sesudah Perbaikan)
-Uji coba langsung pada sampel gambar riil di folder `outputs/`:
-
-| Frame Gambar Uji | Setelan Sebelumnya (`imgsz=640, conf=0.45, em=15`) | Setelan Optimal Baru (`imgsz=1280, conf=0.25, em=0`) | Status |
-| :--- | :--- | :--- | :--- |
-| `deteksi_20261027_090420_886.jpg` | **0 Objek** (Koin & Tutup Hilang) | **3 Objek:** Tutup (0.93), Koin (0.91), Tutup (0.78) | ✅ Sembuh 100% |
-| `deteksi_20261026_140141_940.jpg` | **0 Objek** (Charger conf 0.26 gugur) | **1 Objek:** Charger (0.81) | ✅ Sembuh 100% |
-| `deteksi_20261026_140141_543.jpg` | **0 Objek** | **1 Objek:** Charger (0.81) | ✅ Sembuh 100% |
-| `deteksi_20261025_145648_055.jpg` | **0 Objek** (Koin conf 0.32 gugur) | **1 Objek:** Koin (0.32) | ✅ Sembuh 100% |
-| `deteksi_20261025_143337_767.jpg` | **2 Objek** | **4 Objek:** Tutup (0.92), Koin (0.82), Koin (0.59), Tutup (0.30) | ✅ Sembuh 100% |
-
-### D. Solusi yang Diterapkan
-1. **Mengembalikan Resolusi Standar AI ke 1280 Piksel:**
-   * Mengatur default `--imgsz 1280` di `detect.py`, `sortir_vision_api.py`, dan `src/detector.py`. Objek kecil seperti koin mendapatkan detail piksel optimal 1:1 dari kamera 720p.
-2. **Mengembalikan Sweet Spot Confidence ke 0.25:**
-   * Menjadikan `conf = 0.25` sebagai default agar seluruh benda nyata terdeteksi tanpa terpengaruh bayangan/remang, sementara noise dicegah oleh filter geometri dan penstabil suara terbanyak (`Penstabil`).
-3. **Menonaktifkan Default `edge_margin` (`default = 0`):**
-   * Mengatur `edge_margin = 0` secara default sehingga benda yang berjalan dekat rel atas/bawah konveyor tidak terhapus sia-sia. Pembatasan area kerja kini didelegasikan sepenuhnya ke parameter `ROI` (Region of Interest) yang presisi.
-4. **Relaksasi Dimensi Maksimal Charger di `validate_geometry()`:**
-   * Memperbolehkan dimensi hingga `0.85 * frame_dimension` untuk charger (asalkan rasio luas tetap $< 0.55$), sehingga charger posisi berdiri tetap terdeteksi mulus.
-5. **Melengkapi Default Kelas Target di `sortir_otomatis.py`:**
-   * Memastikan `target_classes` mencakup ketiga kelas: `["koin", "tutup_botol", "charger"]`.
-6. **Verifikasi Unit Testing:**
-   * Seluruh **49 unit tests** (`pytest -v`) lolos 100%. Model AI `models/best.pt` tetap murni tanpa disentuh/retrain.
-
+1. **Selalu Gunakan Resolusi Inferensi Sesuai Karakteristik Objek:**
+   Untuk objek berukuran kecil di kamera (koin, baut, tutup botol), selalu gunakan resolusi inferensi tinggi (`imgsz=1280`). Menggunakan 640 saat inferensi live akan mengikis kontras objek kecil akibat downsampling.
+2. **Manfaatkan Fine-Tuning Ketimbang Melatih dari Awal:**
+   Jika model lama sudah akurat pada 2 kelas dan Anda hanya ingin menambahkan 1 kelas baru atau beradaptasi pada pencahayaan konveyor baru, lakukan **fine-tuning 20 epoch dari `best.pt` lama**. Ini menghemat waktu dari 45 menit menjadi hanya 5 menit.
+3. **Pencahayaan Menyebar (*Diffused Lighting*) untuk Logam:**
+   Permukaan logam koin bertindak seperti cermin di bawah lampu sorot tajam. Selalu pasang diffuser tipis di depan lampu kerja atau arahkan lampu secara miring agar relief koin tampak jelas tanpa silau overexposure.
+4. **Gunakan Blueprint Fisik pada Lomba / Demonstrasi:**
+   Menggambar pola tata letak konveyor dan dudukan robot di atas kertas manila menghemat waktu setup hingga 90% dan mengeliminasi kebutuhan kalibrasi ulang saat berpindah tempat.
+5. **Pisahkan Titik Pusat Geometri dari Titik Hisap Vakum:**
+   Pada benda asimetris seperti charger HP, jangan gunakan titik tengah bounding box untuk titik penjemputan robot. Selalu geser titik hisap ke bidang datar terluas agar karet vakum menempel kedap udara.
+6. **Desain Komunikasi IPC yang Tangguh (*Decoupled IPC*):**
+   Hindari middleware jaringan yang rumit untuk komunikasi antar-program lokal. Penggunaan file JSON berformat atomic write (`target_robot.tmp` $\rightarrow$ `target_robot.json`) terbukti 100% bebas lag, ringan di CPU, dan tidak memicu konflik *file-locking* di Windows.
