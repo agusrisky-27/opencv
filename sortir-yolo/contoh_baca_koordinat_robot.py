@@ -57,14 +57,21 @@ def jalankan_mode_json() -> None:
                         r = target["robot_mm"]
                         drop = target["drop_mm"]
 
-                        print("\n" + "=" * 55)
-                        print(f"🎯 [TARGET_READY] Objek DIAM TOTAL & TERVERIFIKASI: {kelas}")
-                        print(f"   Posisi Ambil Konveyor : X={r['x']} mm, Y={r['y']} mm, Z={r['z']} mm")
-                        print(f"   Posisi Wadah Drop     : X={drop['x']} mm, Y={drop['y']} mm, Z={drop['z']} mm")
-                        print("   --> 🦾 Robot mengeksekusi Pick & Place: G0 X{:.1f} Y{:.1f} Z{:.1f}".format(
-                            r['x'], r['y'], r['z']
-                        ))
-                        print("=" * 55 + "\n")
+                        print("\n" + "=" * 60)
+                        print(f"🎯 [DATA DITERIMA OLEH ROBOT] Target Terkunci: {kelas}")
+                        print(f"   📍 Titik Ambil di Konveyor : X={r['x']} mm, Y={r['y']} mm, Z={r['z']} mm")
+                        print(f"   📦 Titik Wadah Sortir      : X={drop['x']} mm, Y={drop['y']} mm, Z={drop['z']} mm")
+                        print("-" * 60)
+                        print("   🦾 [SIMULASI EKSEKUSI GERAK LENGAN ROBOT]:")
+                        print(f"      1. G0 X{r['x']} Y{r['y']} Z{r['z'] + 25:.1f} F100  -> Meluncur aman di atas objek")
+                        print(f"      2. G0 Z{r['z']:.1f} F40                            -> Ujung vakum turun menyentuh objek")
+                        print(f"      3. M1                                              -> Pompa Vakum ON (Menghisap)")
+                        print(f"      4. G0 Z{r['z'] + 30:.1f} F80                       -> Mengangkat objek dari sabuk")
+                        print(f"      5. G0 X{drop['x']} Y{drop['y']} F100               -> Bergerak ke kotak wadah {kelas}")
+                        print(f"      6. M2 / M6                                         -> Pompa Vakum OFF (Lepas ke wadah)")
+                        print(f"      7. G0 X0 Y150 Z30 F100                             -> Kembali standby ke posisi HOME")
+                        print("   --> ✅ SIMULASI SUKSES: Objek berhasil dipindahkan!")
+                        print("=" * 60 + "\n")
 
             time.sleep(0.1)
     except KeyboardInterrupt:
