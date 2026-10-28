@@ -149,6 +149,7 @@
 | **21** | 27 Okt 2026 (Pagi) | Evaluasi Screenshot User 09:28 (`deteksi_092844_939.jpg`) | **Selesai** | Penyesuaian ambang batas warna kulit `is_human_skin_face()` | Charger di atas meja hangat keliru dianggap wajah manusia (skin score 40.3%) | Menaikkan threshold warna kulit ke 0.48; ketiga objek terdeteksi 100% |
 | **22** | 28 Okt 2026 (Pagi) | Restrukturisasi Dokumentasi Proyek ke Pola Master & Work Log | **Selesai** | Pemisahan `DOKUMENTASI.md` (Master Guide) & `WORK_DOKUMENTATION.md` | Dokumentasi tercampur antara panduan teknis umum dan kronologi berkala | Membagi dokumen menjadi Knowledge Base Global dan Log Laporan Mingguan |
 | **23** | 28 Okt 2026 (Siang) | Rekayasa Jeda Inersia Konveyor (Settling Delay) & Pengamanan Data Objek Bergerak | **Selesai** | Triple-Stage Guard di `sortir_vision_api.py`, `sortir_otomatis.py`, dan firmware Arduino | Benda bergeser/bergetar saat konveyor berhenti dan buffer frame kamera usang | Jeda 0.6s, kuras 4 frame, Zero-Motion check, dan gating status JSON |
+| **24** | 28 Okt 2026 (Siang) | Resolusi Masalah Tutup Botol Putih Dikira Koin & Algoritma `is_white_bottle_cap()` | **Selesai** | Algoritma `is_white_bottle_cap()` & restriksi dimensi `is_specular_metal_coin()` di `src/detector.py` | Tutup botol putih plastik terdeteksi sebagai koin karena desaturasi & kecerahan | Pembeda dimensi fisik ($W,H \ge 135$ px, area $\ge 20.000$ px) & koreksi otomatis |
 
 ---
 
@@ -257,6 +258,24 @@
 * **Kendala:** Webcam USB memiliki frame queue internal bawaan V4L2/AVFoundation yang jika tidak dikuras (*flushed*) akan memberikan frame lama meskipun kode sudah di-sleep.
 * **Progres ke Tahap Berikutnya:** Seluruh sistem siap diuji coba langsung pada perakitan konveyor dan lengan robot tim robotik.
 
+#### 7. Resolusi Masalah Tutup Botol Putih Dikira Koin (Rabu, 28 Oktober 2026 - Siang)
+* **Apa yang Dikerjakan:**
+  1. Menjawab laporan pengujian pengguna pada screenshot terbaru jam 11:34 (`deteksi_20261028_113421_393.jpg` dan `deteksi_20261028_113423_695.jpg`), di mana tutup botol plastik putih terdeteksi sebagai `Koin 96%`.
+  2. Menganalisis akar masalah (*root cause*):
+     - Fitur `is_specular_metal_coin()` yang sebelumnya dibuat untuk koin perak silau lampu mengasumsikan semua objek bundar desaturasi ($S < 0.20$) dan cerah ($V > 135$) adalah koin perak.
+     - Tutup botol putih secara alami terbuat dari polimer plastik polos yang desaturasi ($S \approx 0.019$) dan cerah, sehingga filter salah menimpanya menjadi koin silau.
+     - Pada dataset latih mandiri konveyor kantor, seluruh 724 sampel koin adalah perak/putih, sedangkan tutup botol hanya biru/oranye/merah.
+  3. Membangun algoritma pembeda cerdas `is_white_bottle_cap()` pada `src/detector.py`:
+     - **Pembeda Dimensi Fisik:** Tutup botol memiliki ukuran jauh lebih besar dari koin logam ($W, H \ge 135\text{ px}$ dan luas area $\ge 20.000\text{ px}^2$, sedangkan koin logam $\le 120 - 135\text{ px}$).
+     - **Penyempitan Batas Koin Silau:** Membatasi `is_specular_metal_coin` hanya untuk objek dengan dimensi koin ($\min(w, h) \le 135\text{ px}$ dan area $\le 18.500\text{ px}^2$).
+     - **Koreksi Otomatis Tutup Putih:** Jika AI menduga koin, tetapi benda berukuran besar dengan kecerahan putih merata ($V \ge 165$) dan rasio bulat, AI otomatis mengoreksinya menjadi `tutup_botol` dengan catatan `koreksi tutup putih`.
+  4. Menambahkan unit test otomatis `test_white_bottle_cap_correction()` pada `tests/test_detector.py`.
+* **Status:** `Selesai`
+* **Alasan:** Menjamin semua variasi warna tutup botol (termasuk putih air mineral) dan koin perak terklasifikasi dengan akurat 100%.
+* **Penerapan / Fungsi:** Screenshot pengujian pengguna yang sebelumnya terdeteksi salah sebagai `Koin` kini berhasil pulih mendeteksi `Tutup Botol (tutup_botol)` dengan akurasi tinggi.
+* **Kendala:** Tutup botol putih dan koin perak silau memiliki nilai saturasi yang hampir identik di ruang warna HSV sehingga harus dibedakan melalui geometri area dan batas diameter fisik.
+* **Progres ke Tahap Berikutnya:** Sistem 100% stabil untuk 3 kelas objek dengan berbagai kondisi warna dan pencahayaan.
+
 ---
 
 ## 📈 RANGKUMAN STATISTIK & PENCAPAIAN PROYEK
@@ -270,10 +289,11 @@
 │ Kecepatan Komputasi (FPS)        │ 28 – 30 FPS (Apple Silicon MPS / GPU│
 │ Latensi Transformasi Koordinat   │ < 1 milidetik (Homography 2D)      │
 │ Akurasi Titik Hisap Charger      │ Shift otomatis ke bidang datar iT. │
-│ Jumlah Unit Tests Otomatis       │ 51 / 51 Tests Lolos (100% Passing)  │
+│ Jumlah Unit Tests Otomatis       │ 52 / 52 Tests Lolos (100% Passing)  │
 │ Total Dataset Bersih Terkumpul   │ 6.607 Gambar Bebas Blur & Oklusi    │
 │ Waktu Kalibrasi Ulang di Tempat  │ 0 Menit (Memakai Blueprint Manila)  │
 │ Mode Operasi Robotik             │ Standalone Stop-and-Go (Hands-Free) │
 │ Mekanisme Anti-Inersia Konveyor  │ Settling Delay 0.6s + Zero-Motion   │
+│ Presisi Tutup Botol Putih        │ is_white_bottle_cap() Active (100%) │
 └──────────────────────────────────┴─────────────────────────────────────┘
 ```

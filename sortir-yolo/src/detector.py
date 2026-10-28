@@ -183,8 +183,7 @@ def is_specular_metal_coin(
     Kasus lapangan: Koin perak di bawah sorotan lampu memantulkan cahaya cermin (overexposed),
     menghapus kontras cetakan koin dan tampak seperti lingkaran putih/abu polos (desaturated),
     sehingga model AI dari dataset Roboflow keliru menduga sebagai tutup botol putih.
-    Karena tutup botol riil konveyor adalah plastik berwarna pekat (sat > 0.50), objek bundar silau
-    dengan saturasi sangat rendah ini dikoreksi kembali menjadi Koin.
+    Koin perak memiliki batas ukuran fisik maksimal (~135 piksel di resolusi 1280x720).
     """
     x1, y1, x2, y2 = bbox
     w, h = x2 - x1, y2 - y1
@@ -193,7 +192,8 @@ def is_specular_metal_coin(
     ar = w / float(max(h, 1))
     if not (0.65 <= ar <= 1.50):
         return False
-    if max(w, h) > 230:
+    # Koin memiliki batas dimensi fisik di kamera konveyor (tutup botol jauh lebih besar)
+    if min(w, h) > 135 or max(w, h) > 150 or (w * h) > 18500:
         return False
     crop = frame[y1:y2, x1:x2]
     if crop.size == 0 or is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
@@ -210,6 +210,47 @@ def is_specular_metal_coin(
         if center_crop.size > 0 and float(center_crop.mean()) > min_mean_brightness:
             return True
 
+    return False
+
+
+def is_white_bottle_cap(
+    frame: np.ndarray,
+    bbox: tuple[int, int, int, int],
+    min_dim_px: int = 135,
+    min_area_px: int = 20000,
+    min_mean_brightness: float = 165.0,
+    max_sat: float = 0.35,
+    max_frac_pekat: float = 0.20,
+) -> bool:
+    """True jika benda yang terdeteksi adalah TUTUP BOTOL PLASTIK PUTIH (bukan koin logam).
+
+    Tutup botol putih memiliki karakteristik fisik pembeda:
+    1. Dimensi dan luas area jauh lebih besar dari koin logam (min_dim >= 135 px, area >= 20.000 px^2).
+    2. Aspek rasio bundar (0.70 <= AR <= 1.40).
+    3. Warna putih cerah merata khas plastik (mean_brightness >= 165).
+    4. Desaturasi alami polimer plastik putih (sat < 0.35, frac_pekat < 0.20).
+    5. Bukan wajah/kulit manusia.
+    """
+    x1, y1, x2, y2 = bbox
+    w, h = x2 - x1, y2 - y1
+    if min(w, h) < min_dim_px or (w * h) < min_area_px:
+        return False
+    ar = w / float(max(h, 1))
+    if not (0.70 <= ar <= 1.40):
+        return False
+
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or is_human_skin_face(crop, frame.shape[1], frame.shape[0]):
+        return False
+
+    c = ciri_warna(frame, bbox)
+    if c is None:
+        return False
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    mean_v = float(gray.mean())
+    if mean_v >= min_mean_brightness and c["sat"] < max_sat and c["frac_pekat"] < max_frac_pekat:
+        return True
     return False
 
 
@@ -456,7 +497,15 @@ class Detector:
                 label = display_label("tutup_botol")
                 catatan = "koreksi warna"
 
-            # 3b. Koreksi silau koin: jika AI menduga tutup botol, tetapi objek adalah logam monokromatik / perak silau tanpa pigmen plastik
+            # 3b. Koreksi tutup botol putih: jika AI menduga koin, tetapi benda berukuran besar & putih polos khas tutup botol
+            elif (use_filter and self.cek_warna and class_name == "koin"
+                    and "tutup_botol" in name_to_id and is_white_bottle_cap(frame, bbox)):
+                class_id = name_to_id["tutup_botol"]
+                class_name = "tutup_botol"
+                label = display_label("tutup_botol")
+                catatan = "koreksi tutup putih"
+
+            # 3c. Koreksi silau koin: jika AI menduga tutup botol, tetapi objek adalah logam monokromatik / perak silau tanpa pigmen plastik
             elif (use_filter and self.cek_warna and class_name == "tutup_botol"
                     and "koin" in name_to_id and is_specular_metal_coin(frame, bbox)):
                 class_id = name_to_id["koin"]

@@ -214,6 +214,25 @@ def test_edge_margin_default_nol():
     assert dets[0].bbox == (100, 6, 200, 106)
 
 
+def test_white_bottle_cap_correction():
+    from src.detector import is_white_bottle_cap
+
+    # 1. Objek tutup botol plastik putih besar di frame 720p: w=160, h=160 (area 25600 px)
+    frame = np.full((720, 1280, 3), (30, 90, 40), dtype=np.uint8)  # alas konveyor hijau
+    frame[250:410, 500:660] = (215, 215, 215)  # putih cerah merata khas plastik
+    bbox_white_cap = (500, 250, 660, 410)
+
+    assert is_white_bottle_cap(frame, bbox_white_cap) is True
+
+    # 2. Uji koreksi deteksi di Detector: jika AI salah memprediksi koin (class 0) pada tutup botol putih
+    box_putih = FakeBox(bbox_white_cap, 0, 0.92)  # class 0 = koin di FakeModel
+    det = Detector(model=FakeModel([box_putih]), device="cpu", smart_filter=True, cek_warna=True)
+    dets = det.detect(frame)
+    assert len(dets) == 1
+    assert dets[0].class_name == "tutup_botol"
+    assert dets[0].catatan == "koreksi tutup putih"
+
+
 
 
 

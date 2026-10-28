@@ -308,16 +308,18 @@ Model Deep Learning (YOLO) adalah pendeteksi berbasis probabilitas statistik. Da
 
 ---
 
-### B. Logika Anti-Silau Logam Koin ([`is_specular_metal_coin`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L172-L212)) 🪙
-* **Masalah Lapangan:** Koin perak di bawah sorotan lampu tegak lurus memantulkan cahaya cermin (*specular glare* dengan nilai kecerahan $V > 135$). Pantulan ini menghapus kontras cetakan timbul koin menjadi putih datar polos, sehingga model AI keliru menduga sebagai tutup botol putih dengan skor 95%.
-* **Solusi Zero-Retrain:**
-  - Koin logam silau memiliki karakteristik optik: saturasi warna mendekati nol ($S < 0.20$ dan $frac\_pekat < 0.18$ / monokromatik abu-abu perak).
-  - Tutup botol plastik riil selalu memiliki pigmen warna pekat ($S > 0.55$).
-  - Jika objek terdeteksi sebagai `tutup_botol` namun memenuhi kriteria lingkaran logam silau monokromatik, sistem **secara cerdas mengoreksi kembali kelasnya menjadi Koin** dengan catatan `[koreksi silau]`.
+### B. Logika Pembeda Koin Silau vs Tutup Botol Putih ([`is_specular_metal_coin`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L174-L215) & [`is_white_bottle_cap`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L217-L255)) 🪙 🔵
+* **Masalah Lapangan:** 
+  1. Koin perak di bawah sorotan lampu memantulkan cahaya cermin (*specular glare* dengan $V > 135$), menghapus kontras cetakan relief koin menjadi lingkaran putih/abu-abu polos sehingga model AI keliru menduganya sebagai tutup botol.
+  2. Tutup botol plastik berwarna putih (seperti tutup botol air mineral Aqua/Le Minerale) juga memiliki warna putih polos desaturasi ($S \approx 0.02, V > 180$). Jika filter hanya melihat saturasi, tutup botol putih akan keliru diubah menjadi koin!
+* **Solusi Rekayasa Dua Arah (Dual Geometric & Photometric Discriminator):**
+  - **Pembeda Dimensi Fisik:** Diameter fisik tutup botol ($30 - 45\text{ mm}$) jauh lebih besar dari koin logam ($24 - 27\text{ mm}$). Pada resolusi kamera 1280x720, tutup botol memiliki dimensi $\min(W, H) \ge 135\text{ px}$ dan luas area $\ge 20.000\text{ px}^2$.
+  - **Restriksi Dimensi Koin Silau:** Fungsi `is_specular_metal_coin()` dibatasi hanya berlaku untuk objek berdimensi koin ($\min(W, H) \le 135\text{ px}$ dan luas $\le 18.500\text{ px}^2$).
+  - **Koreksi Tutup Botol Putih:** Fungsi `is_white_bottle_cap()` mendeteksi jika objek berukuran besar ($\ge 135\text{ px}$), memiliki kecerahan putih solid merata ($V \ge 165$), dan rasio bundar. Jika AI keliru menduga koin, sistem otomatis mengoreksinya kembali menjadi **`tutup_botol`** dengan catatan `[koreksi tutup putih]`.
 
 ---
 
-### C. Refinement Titik Hisap Vacuum Charger ([`refine_charger_vacuum_center`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L282-L322)) 🔌
+### C. Refinement Titik Hisap Vacuum Charger ([`refine_charger_vacuum_center`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L320-L360)) 🔌
 * **Tujuan:** Menjamin karet hisap hisapan pompa vakum robot arm RNV3 mendarat pada bidang datar plastik kedap udara.
 * **Mekanisme Kerja:**
   1. Memotong crop bounding box charger.
