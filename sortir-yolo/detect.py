@@ -40,6 +40,7 @@ from src.coordinate_transform import (
 from src.detector import Detection, Detector
 from src.utils import (
     Penstabil,
+    _text_with_outline,
     append_csv,
     draw_detection,
     draw_overlay,
