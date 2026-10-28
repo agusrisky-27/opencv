@@ -194,7 +194,15 @@ def run_stream(
     print("  [f]         : Toggle Smart Filter (ON/OFF)")
     print("  [r]         : Toggle ROI Zona Kerja (ON/OFF)")
     print("  [w]         : Toggle Warna per Kelas (Kuning=Koin, Biru=Tutup)")
+    print("  [SPACE]     : Manual Trigger IR (Kunci koordinat objek diam seketika)")
     print("  [+] / [-]   : Naikkan / turunkan confidence threshold\n")
+
+    last_center: tuple[int, int] | None = None
+    stationary_start: float = 0.0
+    settle_delay: float = getattr(args, "settle_delay", 0.6)
+    motion_thresh: float = getattr(args, "motion_thresh", 3.5)
+    robot_status = "NO_TARGET"
+    robot_status_msg = "Konveyor kosong"
 
     try:
         while True:
@@ -216,6 +224,8 @@ def run_stream(
             if penstabil is not None:
                 detections = penstabil.update(detections)
 
+            best_t = None
+            robot_targets: list[RobotTarget] = []
             if transformer is not None:
                 robot_targets = [
                     transformer.to_robot_target(
@@ -231,7 +241,58 @@ def run_stream(
                     for d in detections
                 ]
                 best_t = choose_best_target(robot_targets, roi=roi_coords if roi_active else None)
-                export_target_json(best_t, robot_targets, DEFAULT_TARGET_JSON)
+
+                # Logika Stop-and-Go: Menahan data saat objek bergerak, mengunci data saat diam stabil
+                if best_t is not None:
+                    cx, cy = best_t.pixel_center
+                    if last_center is not None:
+                        dist = np.hypot(cx - last_center[0], cy - last_center[1])
+                        if dist <= motion_thresh:
+                            # Benda mulai atau sedang diam di konveyor
+                            if stationary_start == 0.0:
+                                stationary_start = time.time()
+                            elapsed = time.time() - stationary_start
+                            if elapsed >= settle_delay:
+                                robot_status = "TARGET_READY"
+                                robot_status_msg = f"DIAM TOTAL ({elapsed:.1f}s) -> TARGET TERKUNCI"
+                                export_target_json(
+                                    best_t,
+                                    robot_targets,
+                                    DEFAULT_TARGET_JSON,
+                                    status="TARGET_READY",
+                                    message=f"Benda {best_t.label} diam terverifikasi. Koordinat terkunci.",
+                                )
+                            else:
+                                robot_status = "WAITING_STATIONARY"
+                                robot_status_msg = f"MEREDAM INERSIA ({elapsed:.1f}s/{settle_delay:.1f}s)..."
+                                export_target_json(
+                                    None,
+                                    robot_targets,
+                                    DEFAULT_TARGET_JSON,
+                                    status="WAITING_STATIONARY",
+                                    message=f"Menunggu inersia reda ({elapsed:.1f}s/{settle_delay:.1f}s)...",
+                                )
+                        else:
+                            # Benda masih meluncur di konveyor -> TAHAN KOORDINAT
+                            stationary_start = 0.0
+                            robot_status = "CONVEYOR_MOVING"
+                            robot_status_msg = "KONVEYOR JALAN (Data ditahan)"
+                            export_target_json(
+                                None,
+                                robot_targets,
+                                DEFAULT_TARGET_JSON,
+                                status="CONVEYOR_MOVING",
+                                message="Objek sedang bergerak di konveyor - data ditahan",
+                            )
+                    else:
+                        stationary_start = time.time()
+                    last_center = (cx, cy)
+                else:
+                    last_center = None
+                    stationary_start = 0.0
+                    robot_status = "NO_TARGET"
+                    robot_status_msg = "KONVEYOR KOSONG"
+                    export_target_json(None, [], DEFAULT_TARGET_JSON, status="NO_TARGET", message="Area konveyor kosong")
 
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
@@ -253,11 +314,35 @@ def run_stream(
                 warna_kelas=warna_kelas_on,
                 track_active=detector.track,
             )
+
+            # Tampilkan Banner Status Robot di Layar Video
+            if transformer is not None:
+                color_hud = (0, 255, 0) if robot_status == "TARGET_READY" else (
+                    (0, 215, 255) if robot_status == "WAITING_STATIONARY" else (0, 0, 255)
+                )
+                hud_line = f"ROBOT IPC: [{robot_status}] {robot_status_msg}"
+                if robot_status == "TARGET_READY" and best_t is not None:
+                    hud_line += f" | X={best_t.x_mm} Y={best_t.y_mm} Z={best_t.z_mm}"
+                _text_with_outline(frame, hud_line, (10, 52), scale=0.6, color=color_hud)
+
             cv2.imshow(WINDOW, frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
+            if key == 32:  # Tombol SPACE (Manual Trigger / Kunci Koordinat)
+                if best_t is not None:
+                    robot_status = "TARGET_READY"
+                    export_target_json(
+                        best_t,
+                        robot_targets,
+                        DEFAULT_TARGET_JSON,
+                        status="TARGET_READY",
+                        message=f"Manual SPACE trigger: {best_t.label} terkunci.",
+                    )
+                    print(f"\n🎯 [SPACE TRIGGER] Koordinat Terkunci & Dikirim: {best_t.label}")
+                    print(f"   Ambil : X={best_t.x_mm} mm, Y={best_t.y_mm} mm, Z={best_t.z_mm} mm")
+                    print(f"   Drop  : X={best_t.drop_x_mm} mm, Y={best_t.drop_y_mm} mm, Z={best_t.drop_z_mm} mm\n")
             if key == ord("s"):
                 print(f"Screenshot: {save_screenshot(frame, OUTPUT_DIR)}")
             if key == ord("c"):
@@ -312,6 +397,10 @@ def main() -> int:
     ap.add_argument("--min-size", type=int, default=10, help="ukuran lebar/tinggi minimum piksel (default: 10)")
     ap.add_argument("--no-threaded", action="store_true", help="matikan background thread capture zero-latency")
     ap.add_argument("--no-robot-export", action="store_true", help="jangan ekspor outputs/target_robot.json secara real-time")
+    ap.add_argument("--settle-delay", type=float, default=0.6,
+                    help="Jeda inersia konveyor (detik) sebelum koordinat dikunci ke robot (default: 0.6s)")
+    ap.add_argument("--motion-thresh", type=float, default=3.5,
+                    help="Batas pergeseran piksel benda untuk dianggap diam total (default: 3.5 px)")
     args = ap.parse_args()
 
     transformer = None

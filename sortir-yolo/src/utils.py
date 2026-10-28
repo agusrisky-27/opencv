@@ -273,9 +273,15 @@ class Penstabil:
 
 
 # ------------------------------------------------------------ menggambar
-def _text_with_outline(frame: np.ndarray, text: str, org: tuple[int, int], scale: float = 0.55) -> None:
+def _text_with_outline(
+    frame: np.ndarray,
+    text: str,
+    org: tuple[int, int],
+    scale: float = 0.55,
+    color: tuple[int, int, int] = (255, 255, 255),
+) -> None:
     cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 3, cv2.LINE_AA)
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
 
 
 def draw_detection(
