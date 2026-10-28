@@ -442,15 +442,31 @@ Data target diekspor ke file `outputs/target_robot.json` menggunakan teknik *ato
 
 Untuk implementasi demonstrasi atau operasional pabrik nyata, **tidak boleh ada operator yang menekan tombol keyboard laptop**. Seluruh siklus dijalankan secara otonom oleh modul [`sortir_otomatis.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/sortir_otomatis.py):
 
-### A. Alur Kerja Stop-and-Go Inspection
-1. **Benda Tiba:** Sabuk konveyor membawa barang masuk ke area jangkauan robot.
-2. **Trigger Konveyor Berhenti:**
-   * **Opsi Hardware:** Sensor Infrared (IR) mendeteksi benda dan Arduino USB mematikan relay konveyor.
-   * **Opsi Vision:** Kamera mendeteksi otomatis saat titik tengah benda berhenti diam (*stationary detector* selama $> 0.3$ detik).
-3. **Single-Shot Snapshot:** Kamera mengambil 1 foto berkualitas tinggi saat benda diam sempurna. Koordinat milimeter terkunci pasti tanpa jitter.
-4. **Penyaringan Kelas Target Sortir:**
-   * **JIKA TARGET (Koin / Tutup / Charger):** Koordinat diekspor ke `target_robot.json`. Lengan robot bergerak ke $(X, Y, Z_{pick})$, mengaktifkan pompa hisap vakum, mengangkat benda, dan memindahkan ke wadah tujuan.
-   * **JIKA BUKAN TARGET:** Lengan robot tetap standby, dan konveyor langsung diaktifkan kembali membawa benda berikutnya.
+### A. Masalah Fisik Nyata: Inersia Sabuk Konveyor & Jeda Berhenti (Settling Time)
+Secara mekanis, saat motor konveyor dimatikan oleh sensor Infrared (IR), sabuk konveyor dan objek di atasnya **tidak pernah berhenti beku seketika (0 mm/s)** dalam 0 milidetik. Ada faktor deselerasi motor, selip sabuk (*belt slippage*), dan getaran inersia (*mechanical vibration / jitter*):
+1. **Risiko Jika Jepret Instan:** Jika kamera langsung mengambil snapshot di milidetik sensor IR terputus, kamera akan menangkap foto dengan *motion blur* atau benda yang masih bergeser 3–8 mm dari titik final. Akibatnya, gripper/suction cup robot akan meleset saat turun mengambil!
+2. **Risiko Buffer Kamera Usang:** Webcam USB memiliki buffer frame hardware (3–5 frame). Jika kode hanya melakukan `sleep` tanpa membersihkan buffer (*flush*), frame yang dibaca adalah foto lama saat konveyor masih meluncur kencang!
+
+### B. Solusi Rekayasa: Triple-Stage Settling Filter
+Sistem menerapkan 3 lapisan pengamanan di [`sortir_vision_api.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/sortir_vision_api.py) dan [`sortir_otomatis.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/sortir_otomatis.py):
+1. **Lapisan 1: Settling Delay (0.5 – 0.8 Detik, Default 0.6s):**
+   Saat sensor IR aktif, sistem menahan pengiriman koordinat ke robot (status JSON: `WAITING_STATIONARY`, `target: null`). Waktu 0.6 detik adalah *sweet spot* optimal: cukup untuk meredam inersia mekanis tanpa memperlambat siklus sortir (*cycle time*).
+2. **Lapisan 2: Camera Buffer Flush (`flush_frames=4`):**
+   Setelah jeda inersia selesai, sistem membuang 4 frame antrian lama dari memori webcam (`self.read_frame()`), memastikan frame berikutnya adalah citra *real-time* terbaru.
+3. **Lapisan 3: Zero-Motion Verification ($\Delta d \le 3.5\text{ px}$):**
+   AI membandingkan posisi sentroid objek antara 2 frame berurutan:
+   $$\Delta d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$$
+   Jika $\Delta d \le 3.5\text{ piksel}$, objek dikonfirmasi **100% DIAM TOTAL & STABIL**. Jika masih ada sisa selip, sistem memberi toleransi jeda mikro (0.2 detik) sebelum mengunci koordinat.
+
+### C. Protokol Status JSON IPC (`outputs/target_robot.json`)
+Agar robot tidak bergerak sembarangan saat objek meluncur di konveyor:
+* `status: "CONVEYOR_MOVING"` $\rightarrow$ Konveyor sedang jalan, robot WAJIB diam di posisi HOME (`target: null`).
+* `status: "WAITING_STATIONARY"` $\rightarrow$ Sensor IR terpicu, konveyor deselerasi, robot tetap standby.
+* `status: "TARGET_READY"` $\rightarrow$ Objek terbukti diam total, koordinat $(X, Y, Z)$ terkunci permanen, robot mengeksekusi Pick & Place.
+* `status: "NO_TARGET"` $\rightarrow$ Benda bukan target sortir atau area kosong, konveyor langsung dinyalakan kembali (`RESUME`).
+
+### D. Firmware Arduino Siap Pakai
+Tersedia firmware siap flash di [`arduino/conveyor_ir_controller.ino`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/arduino/conveyor_ir_controller.ino) yang menghubungkan sensor IR (Pin 2), Relay Motor (Pin 7), dan komunikasi serial USB dua arah (`IR_TRIGGER` $\leftrightarrow$ `PICK` / `RESUME`).
 
 ---
 

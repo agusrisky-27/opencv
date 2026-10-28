@@ -258,13 +258,28 @@ def export_target_json(
     best_target: RobotTarget | None,
     all_targets: list[RobotTarget],
     output_path: Path | str,
+    status: str | None = None,
+    message: str | None = None,
 ) -> bool:
-    """Menulis status target ke file JSON secara atomic (aman dibaca tim robotik di Windows)."""
+    """Menulis status target ke file JSON secara atomic (aman dibaca tim robotik di Windows).
+
+    Format status:
+    - TARGET_READY: Benda diam total, koordinat valid, siap diambil robot.
+    - WAITING_STATIONARY: Benda baru berhenti / konveyor deselerasi (menunggu getaran inersia reda).
+    - CONVEYOR_MOVING: Konveyor sedang berjalan, dilarang mengambil objek bergerak.
+    - NO_TARGET: Area sortir kosong atau objek bukan termasuk kelas target.
+    """
     p = Path(output_path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
+    if status is not None:
+        status_str = status
+    else:
+        status_str = "TARGET_READY" if best_target is not None else "NO_TARGET"
+
     payload = {
-        "status": "TARGET_READY" if best_target is not None else "NO_TARGET",
+        "status": status_str,
+        "message": message or ("Koordinat siap diambil" if status_str == "TARGET_READY" else "Menunggu status siap"),
         "timestamp": time.time(),
         "waktu_baca": time.strftime("%Y-%m-%d %H:%M:%S"),
         "target": best_target.to_dict() if best_target else None,

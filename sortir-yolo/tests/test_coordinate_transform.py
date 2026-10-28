@@ -169,3 +169,66 @@ def test_inspect_stationary_object(monkeypatch, tmp_path):
     # 2. Jika target_classes hanya "charger", koin harus diabaikan (mengembalikan None)
     ignored = vision.inspect_stationary_object(target_classes=["charger"], save_snapshot=False)
     assert ignored is None
+
+
+def test_export_target_json_custom_status(tmp_path):
+    json_path = tmp_path / "target_status.json"
+
+    # Status konveyor bergerak
+    export_target_json(None, [], json_path, status="CONVEYOR_MOVING", message="Konveyor jalan")
+    d1 = read_target_json(json_path)
+    assert d1["status"] == "CONVEYOR_MOVING"
+    assert d1["target"] is None
+    assert d1["message"] == "Konveyor jalan"
+
+    # Status jeda inersia
+    export_target_json(None, [], json_path, status="WAITING_STATIONARY", message="Menunggu diam")
+    d2 = read_target_json(json_path)
+    assert d2["status"] == "WAITING_STATIONARY"
+    assert d2["message"] == "Menunggu diam"
+
+
+def test_inspect_stationary_with_motion_verification(monkeypatch, tmp_path):
+    from sortir_vision_api import SortirVisionAPI
+    from src.detector import Detection
+
+    monkeypatch.setattr("src.camera.Camera.open", lambda self, auto_fallback=True: self)
+    frame_dummy = np.zeros((720, 1280, 3), dtype=np.uint8)
+    monkeypatch.setattr("src.camera.Camera.read", lambda self: (True, frame_dummy))
+
+    target_json = tmp_path / "target_robot.json"
+    monkeypatch.setattr("sortir_vision_api.TARGET_JSON_PATH", target_json)
+
+    vision = SortirVisionAPI(source=0)
+    det = Detection(
+        class_id=1,
+        class_name="tutup_botol",
+        label="Tutup Botol",
+        confidence=0.88,
+        bbox=(100, 100, 200, 200),
+        center=(150, 150),
+        center_norm=(150/1280, 150/720),
+    )
+    monkeypatch.setattr(vision.detector, "detect", lambda f, apply_smart_filter=True: [det])
+
+    # Jalankan inspect dengan settling delay pendek dan verifikasi gerak
+    target = vision.inspect_stationary_object(
+        target_classes=["tutup_botol"],
+        settle_delay=0.01,
+        verify_motion=True,
+        save_snapshot=False,
+    )
+    assert target is not None
+    assert target.class_name == "tutup_botol"
+
+    # Verifikasi file JSON terakhir berstatus TARGET_READY
+    data = read_target_json(target_json)
+    assert data is not None
+    assert data["status"] == "TARGET_READY"
+    assert data["target"]["label"] == "Tutup Botol"
+
+    # Test set_status
+    vision.set_status("CONVEYOR_MOVING", "Konveyor jalan lagi")
+    data_moving = read_target_json(target_json)
+    assert data_moving["status"] == "CONVEYOR_MOVING"
+    assert data_moving["target"] is None

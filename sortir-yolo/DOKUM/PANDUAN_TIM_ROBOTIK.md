@@ -49,11 +49,22 @@ Metode ini adalah yang paling stabil dan terpisah (*Decoupled*).
 - **Terminal 1:** Jalankan OpenCV Vision (`python 05_detect.py`) untuk memantau video kamera.
 - **Terminal 2:** Jalankan script robot Anda. Program robot membaca target terbaru dari file `outputs/target_robot.json`.
 
+#### 🚦 Arti Status pada File JSON (`status`):
+Untuk menjamin robot **TIDAK MENGAMBIL OBJEK YANG SEDANG BERGERAK / BERGETAR**:
+| Nilai Status | Kondisi Konveyor & Objek | Tindakan yang Harus Dilakukan Robot |
+|---|---|---|
+| `CONVEYOR_MOVING` | Sabuk konveyor sedang berjalan membawa barang. | **STANDBY di HOME.** Dilarang menjangkau conveyor (`target: null`). |
+| `WAITING_STATIONARY` | Sensor IR baru terpicu, konveyor deselerasi (jeda 0.6s). | **STANDBY.** Menunggu inersia & getaran mekanis reda total. |
+| `TARGET_READY` | Objek terbukti **DIAM TOTAL & STABIL** ($\Delta d \le 3.5\text{ px}$). | **EKSEKUSI PICK & PLACE.** Koordinat $X, Y, Z$ terkunci pasti. |
+| `NO_TARGET` | Benda bukan target sortir atau area conveyor kosong. | **STANDBY.** Konveyor otomatis jalan kembali (`RESUME`). |
+
 #### 📄 Struktur Isi File `outputs/target_robot.json`:
 ```json
 {
   "status": "TARGET_READY",
+  "message": "Benda Koin diam terverifikasi. Koordinat terkunci.",
   "timestamp": 1729601234.56,
+  "waktu_baca": "2026-10-28 11:20:00",
   "target": {
     "class_name": "koin",
     "label": "Koin",
@@ -69,8 +80,11 @@ Metode ini adalah yang paling stabil dan terpisah (*Decoupled*).
       "y": 100.0,
       "z": 45.0
     },
-    "track_id": 3
-  }
+    "track_id": 3,
+    "catatan": ""
+  },
+  "total_objek": 1,
+  "daftar_objek": [...]
 }
 ```
 
@@ -82,33 +96,51 @@ from pathlib import Path
 
 TARGET_FILE = Path("outputs/target_robot.json")
 
-def ambil_target_terbaru():
+def baca_target_json():
     if not TARGET_FILE.exists():
         return None
     try:
         with open(TARGET_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if data.get("status") == "TARGET_READY":
-                return data["target"]
+            return json.load(f)
     except Exception:
         return None
-    return None
 
-# Loop pengawasan robot
+# Loop pengawasan robot di Windows
+print("🤖 Kontroler Robot Aktif. Menunggu benda diam di konveyor...")
+last_timestamp = 0.0
+
 while True:
-    target = ambil_target_terbaru()
-    if target:
-        kelas = target["label"]               # "Koin" atau "Tutup Botol"
-        pos = target["robot_mm"]              # Koordinat titik ambil di conveyor
-        wadah = target["drop_mm"]             # Koordinat wadah sortir tujuan
+    data = baca_target_json()
+    if data:
+        status = data.get("status", "NO_TARGET")
         
-        print(f"🎯 Target Siap: {kelas}")
-        print(f"   Ambil di: X={pos['x']}, Y={pos['y']}, Z={pos['z']}")
-        print(f"   Drop  ke: X={wadah['x']}, Y={wadah['y']}, Z={wadah['z']}")
-        
-        # Kirim G-Code ke robot RNV3 Anda di sini...
-        time.sleep(1.0)
-    time.sleep(0.1)
+        # PENTING: Hanya eksekusi jika status sudah TARGET_READY
+        if status == "TARGET_READY":
+            ts = data.get("timestamp", 0.0)
+            if ts != last_timestamp:
+                last_timestamp = ts
+                target = data["target"]
+                kelas = target["label"]               # "Koin", "Tutup Botol", atau "Charger"
+                pos = target["robot_mm"]              # Koordinat titik ambil di conveyor
+                wadah = target["drop_mm"]             # Koordinat wadah sortir tujuan
+                
+                print(f"🎯 Target Siap & Diam: {kelas}")
+                print(f"   Ambil di: X={pos['x']} mm, Y={pos['y']} mm, Z={pos['z']} mm")
+                print(f"   Drop  ke: X={wadah['x']} mm, Y={wadah['y']} mm, Z={wadah['z']} mm")
+                
+                # Eksekusi G-Code ke robot RNV3 Anda:
+                # robot.move_to(pos['x'], pos['y'], pos['z'] + 25)
+                # robot.pick(pos['z'])
+                # robot.drop(wadah['x'], wadah['y'], wadah['z'])
+                
+        elif status == "CONVEYOR_MOVING":
+            # Konveyor sedang jalan, robot tetap diam aman di posisi standby
+            pass
+        elif status == "WAITING_STATIONARY":
+            # Konveyor sedang meredam inersia berhenti, robot menunggu
+            pass
+
+    time.sleep(0.05)
 ```
 
 ---

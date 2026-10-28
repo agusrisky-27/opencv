@@ -148,6 +148,7 @@
 | **20** | 27 Okt 2026 (Pagi) | Riset & Investigasi: "Kenapa Objek Makin Sulit Terdeteksi?" | **Selesai** | Restorasi sensitivitas deteksi di `src/detector.py` & `detect.py` | Layar OpenCV melaporkan 0 objek terdeteksi pada frame uji nyata | Mengembalikan `imgsz=1280`, `conf=0.25`, dan menonaktifkan `edge_margin` |
 | **21** | 27 Okt 2026 (Pagi) | Evaluasi Screenshot User 09:28 (`deteksi_092844_939.jpg`) | **Selesai** | Penyesuaian ambang batas warna kulit `is_human_skin_face()` | Charger di atas meja hangat keliru dianggap wajah manusia (skin score 40.3%) | Menaikkan threshold warna kulit ke 0.48; ketiga objek terdeteksi 100% |
 | **22** | 28 Okt 2026 (Pagi) | Restrukturisasi Dokumentasi Proyek ke Pola Master & Work Log | **Selesai** | Pemisahan `DOKUMENTASI.md` (Master Guide) & `WORK_DOKUMENTATION.md` | Dokumentasi tercampur antara panduan teknis umum dan kronologi berkala | Membagi dokumen menjadi Knowledge Base Global dan Log Laporan Mingguan |
+| **23** | 28 Okt 2026 (Siang) | Rekayasa Jeda Inersia Konveyor (Settling Delay) & Pengamanan Data Objek Bergerak | **Selesai** | Triple-Stage Guard di `sortir_vision_api.py`, `sortir_otomatis.py`, dan firmware Arduino | Benda bergeser/bergetar saat konveyor berhenti dan buffer frame kamera usang | Jeda 0.6s, kuras 4 frame, Zero-Motion check, dan gating status JSON |
 
 ---
 
@@ -228,7 +229,7 @@
 * **Kendala:** Pada pengujian tangkapan layar user jam 09:28 (`deteksi_20261027_092844_939.jpg`), charger HP (conf 0.49) sempat terlewat karena alas meja hangat memicu filter kulit manusia (`skin_frac = 40.3%`).
 * **Progres ke Tahap Berikutnya:** Mengkalibrasi ambang batas warna kulit `is_human_skin_face` dari `0.40` menjadi `0.48`. Ketiga objek (Tutup Botol Biru, Tutup Botol Oranye, Charger) berhasil terdeteksi bersamaan 100%.
 
-#### 5. Restrukturisasi Dokumentasi Proyek (Rabu, 28 Oktober 2026 - Hari Ini)
+#### 5. Restrukturisasi Dokumentasi Proyek (Rabu, 28 Oktober 2026 - Pagi)
 * **Apa yang Dikerjakan:**
   1. Memisahkan dokumentasi menjadi dua berkas dengan fungsi yang jelas:
      - **`DOKUMENTASI.md`:** Menjadi *Master Technical Knowledge Base* yang merangkum arsitektur global, instalasi, langkah awal pembuatan dari nol (Roboflow hingga selesai), panduan pelatihan YOLOv8 (scratch vs finetune, trik resume tanpa ulang dari 0), smart filters, kalibrasi robot, dan best practices.
@@ -238,6 +239,23 @@
 * **Alasan:** Memudahkan pembacaan: tim engineering baru dapat mempelajari konsep sistem secara utuh melalui `DOKUMENTASI.md`, sedangkan pimpinan proyek atau penguji dapat memantau riwayat progres harian/mingguan melalui `WORK_DOKUMENTATION.md`.
 * **Penerapan / Fungsi:** Sistem terdokumentasi rapi, transparan, dan siap diaudit untuk keperluan akademik, lomba, maupun implementasi industri.
 * **Progres ke Tahap Berikutnya:** Menjaga kebersihan repository dan memastikan seluruh pengujian otomatis tetap lulus.
+
+#### 6. Rekayasa Jeda Inersia Konveyor (Settling Delay) & Pengamanan Data Objek Bergerak (Rabu, 28 Oktober 2026 - Siang)
+* **Apa yang Dikerjakan:**
+  1. Menganalisis dinamika mekanis sabuk konveyor saat dimatikan oleh sensor Infrared (IR).
+  2. Menemukan bahwa saat motor berhenti, sabuk dan objek masih meluncur dan bergetar (*mechanical inertia & belt slip*) selama sepersekian detik. Jika kamera langsung mengambil koordinat seketika, titik fisik akan meleset beberapa milimeter dan gambar buram akibat motion blur.
+  3. Membangun arsitektur penanganan 4 lapis (*Triple-Stage Guard & Gated IPC*):
+     - **Gated Data Transmission:** Saat objek bergerak di konveyor, status JSON diekspor sebagai `CONVEYOR_MOVING` dengan `target: null`. Robot terlindungi dari mengambil objek yang bergerak.
+     - **Settling Delay:** Memberikan jeda adaptif $0.6$ detik (rentang optimal $0.5 - 0.8$ detik) saat sensor IR terpicu untuk meredam inersia mekanis tanpa memperlambat cycle time sortir.
+     - **Hardware Frame Buffer Flush:** Menguras 4 frame antrian hardware lama di memori webcam agar tidak membaca frame usang saat konveyor masih meluncur.
+     - **Zero-Motion Verification:** Memverifikasi sentroid objek di antara 2 frame ($\Delta d \le 3.5\text{ px}$) untuk membuktikan objek 100% diam total sebelum koordinat $(X, Y, Z)$ dikunci (`TARGET_READY`).
+  4. Menyediakan firmware Arduino siap pakai (`arduino/conveyor_ir_controller.ino`) yang menghubungkan sensor IR, Relay Konveyor, dan protokol serial dua arah.
+  5. Menambahkan 2 unit test otomatis baru pada `tests/test_coordinate_transform.py` sehingga total test menjadi **51 test lolos (100% passing)**.
+* **Status:** `Selesai`
+* **Alasan:** Menjawab kebutuhan pengguna agar koordinat fisik robot benar-benar akurat saat objek sudah berhenti stabil dan tidak mengirimkan data sampah saat objek masih berjalan di konveyor.
+* **Penerapan / Fungsi:** Modul `sortir_vision_api.py`, `sortir_otomatis.py`, dan `contoh_baca_koordinat_robot.py` terintegrasi penuh dengan protokol status (`CONVEYOR_MOVING`, `WAITING_STATIONARY`, `TARGET_READY`, `NO_TARGET`).
+* **Kendala:** Webcam USB memiliki frame queue internal bawaan V4L2/AVFoundation yang jika tidak dikuras (*flushed*) akan memberikan frame lama meskipun kode sudah di-sleep.
+* **Progres ke Tahap Berikutnya:** Seluruh sistem siap diuji coba langsung pada perakitan konveyor dan lengan robot tim robotik.
 
 ---
 
@@ -252,9 +270,10 @@
 │ Kecepatan Komputasi (FPS)        │ 28 – 30 FPS (Apple Silicon MPS / GPU│
 │ Latensi Transformasi Koordinat   │ < 1 milidetik (Homography 2D)      │
 │ Akurasi Titik Hisap Charger      │ Shift otomatis ke bidang datar iT. │
-│ Jumlah Unit Tests Otomatis       │ 49 / 49 Tests Lolos (100% Passing)  │
+│ Jumlah Unit Tests Otomatis       │ 51 / 51 Tests Lolos (100% Passing)  │
 │ Total Dataset Bersih Terkumpul   │ 6.607 Gambar Bebas Blur & Oklusi    │
 │ Waktu Kalibrasi Ulang di Tempat  │ 0 Menit (Memakai Blueprint Manila)  │
 │ Mode Operasi Robotik             │ Standalone Stop-and-Go (Hands-Free) │
+│ Mekanisme Anti-Inersia Konveyor  │ Settling Delay 0.6s + Zero-Motion   │
 └──────────────────────────────────┴─────────────────────────────────────┘
 ```

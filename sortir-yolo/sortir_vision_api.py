@@ -164,28 +164,75 @@ class SortirVisionAPI:
         export_target_json(best, robot_targets, TARGET_JSON_PATH)
         return robot_targets
 
+    def set_status(self, status: str, message: str = "") -> bool:
+        """Memperbarui status sistem ke file JSON secara atomic (misal CONVEYOR_MOVING, WAITING_STATIONARY)."""
+        return export_target_json(None, [], TARGET_JSON_PATH, status=status, message=message)
+
     def inspect_stationary_object(
         self,
         target_classes: list[str] | None = None,
         save_snapshot: bool = True,
-        flush_frames: int = 3,
+        settle_delay: float = 0.6,
+        flush_frames: int = 4,
+        verify_motion: bool = True,
+        max_motion_px: float = 3.5,
     ) -> RobotTarget | None:
-        """Dipanggil saat konveyor BERHENTI (dipicu sensor Infrared / Proximity).
+        """Dipanggil saat konveyor BERHENTI (dipicu sensor Infrared / Proximity / Auto-Vision).
 
-        Mengambil 1 kali pengamatan statis (Single-Shot Snapshot):
-        1. Membuang buffer kamera lama saat konveyor masih bergerak.
-        2. Mengambil 1 frame foto tajam saat benda sudah diam total (tanpa motion blur / jitter).
-        3. Mendeteksi objek dan memeriksa apakah termasuk dalam daftar 'target_classes' yang ingin diambil.
-        4. Jika ya: mengembalikan koordinat mm fisik statis (X, Y, Z pasti).
-        5. Jika tidak cocok (misal bukan kelas target): mengembalikan None (agar konveyor bisa langsung jalan lagi).
+        Mengatasi inersia mekanis konveyor & getaran benda (Stop-and-Go Settling Delay):
+        1. Menahan pengiriman data ke robot (status: 'WAITING_STATIONARY') selama benda deselerasi.
+        2. Menunggu 'settle_delay' (default 0.6 detik, jeda optimal agar getaran & selip belt reda).
+        3. Membuang buffer antrian frame kamera lama ('flush_frames') agar tidak membaca foto usang saat masih gerak.
+        4. Verifikasi Zero-Motion ('verify_motion'): Membandingkan 2 frame berurutan. Jika pergeseran centroid
+           <= max_motion_px (3.5 px), benda terbukti 100% diam total.
+        5. Mengambil 1 snapshot foto tajam resolusi tinggi tanpa motion blur.
+        6. Jika kelas target cocok: Kunci koordinat mm robot & ekspor 'TARGET_READY' ke JSON.
+        7. Jika bukan kelas target: Ekspor 'NO_TARGET' dan kembalikan None agar konveyor langsung resume.
         """
-        # Buang buffer frame lama dari internal camera queue
+        # Lapisan 1: Beritahu robot bahwa benda baru berhenti & sedang menunggu stabil
+        export_target_json(
+            None,
+            [],
+            TARGET_JSON_PATH,
+            status="WAITING_STATIONARY",
+            message=f"Menunggu inersia konveyor reda ({settle_delay:.2f}s)...",
+        )
+
+        # Lapisan 2: Jeda inersia fisik (0.5 - 0.8 detik)
+        if settle_delay > 0:
+            time.sleep(settle_delay)
+
+        # Lapisan 3: Kuras buffer internal kamera (karena USB cam menyimpan 3-5 frame lama di hardware)
         for _ in range(max(1, flush_frames)):
             self.read_frame()
 
         frame = self.read_frame()
         if frame is None:
+            export_target_json(None, [], TARGET_JSON_PATH, status="NO_TARGET", message="Kamera gagal membaca frame")
             return None
+
+        # Lapisan 4: Verifikasi keheningan gerak (Zero-Motion Verification)
+        if verify_motion:
+            det1 = self.detector.detect(frame, apply_smart_filter=True)
+            if det1:
+                c1 = det1[0].center
+                time.sleep(0.06)
+                # Flush 1 frame dan baca frame verifikasi
+                self.read_frame()
+                frame_verify = self.read_frame()
+                if frame_verify is not None:
+                    det2 = self.detector.detect(frame_verify, apply_smart_filter=True)
+                    if det2:
+                        c2 = det2[0].center
+                        shift = ((c2[0] - c1[0]) ** 2 + (c2[1] - c1[1]) ** 2) ** 0.5
+                        if shift > max_motion_px:
+                            # Masih ada getaran/selip, beri toleransi tambahan 0.2 detik
+                            time.sleep(0.2)
+                            for _ in range(2):
+                                self.read_frame()
+                            frame = self.read_frame() or frame_verify
+                        else:
+                            frame = frame_verify
 
         h, w = frame.shape[:2]
         self.detector.roi = self.roi
@@ -197,7 +244,7 @@ class SortirVisionAPI:
             cv2.imwrite(str(snap_path), frame)
 
         if not detections:
-            export_target_json(None, [], TARGET_JSON_PATH)
+            export_target_json(None, [], TARGET_JSON_PATH, status="NO_TARGET", message="Tidak ada objek di zona ambil")
             return None
 
         robot_targets: list[RobotTarget] = []
@@ -219,7 +266,22 @@ class SortirVisionAPI:
             robot_targets.append(rt)
 
         best = choose_best_target(robot_targets, roi=self.roi)
-        export_target_json(best, robot_targets, TARGET_JSON_PATH)
+        if best is not None:
+            export_target_json(
+                best,
+                robot_targets,
+                TARGET_JSON_PATH,
+                status="TARGET_READY",
+                message=f"Benda {best.label} diam terverifikasi. Koordinat terkunci.",
+            )
+        else:
+            export_target_json(
+                None,
+                robot_targets,
+                TARGET_JSON_PATH,
+                status="NO_TARGET",
+                message="Objek bukan target sortir yang ingin diambil.",
+            )
         return best
 
     def release(self) -> None:
