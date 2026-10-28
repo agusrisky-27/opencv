@@ -24,11 +24,12 @@ echo Kontrol Keyboard:
 echo   [q] / [ESC] : Keluar dari program
 echo   [s]         : Simpan tangkapan layar (screenshot)
 echo   [c]         : Simpan koordinat objek ke CSV
+echo   [SPACE]     : Manual Trigger IR (Kunci koordinat ke robot)
 echo   [t]         : Toggle Object Tracking (ON/OFF)
 echo   [f]         : Toggle Smart Filter (ON/OFF)
 echo   [r]         : Toggle ROI Conveyor (ON/OFF)
 echo   [w]         : Toggle Warna per Kelas
 echo --------------------------------------------------------
-python 05_detect.py --source %INDEX_KAMERA%
+python detect.py --source %INDEX_KAMERA% --conf 0.25 --imgsz 1280 --edge-margin 0 --warna-kelas
 
 pause

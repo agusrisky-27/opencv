@@ -20,11 +20,13 @@ yolov8*.pt
 !sortir-yolo/models/best.pt
 !models/best.pt
 
-# Output runs & screenshots
+# Output runs & screenshots (pertahankan file target_robot.json untuk tim robotik)
 runs/
 */runs/
-outputs/
-*/outputs/
+outputs/*
+!outputs/target_robot.json
+*/outputs/*
+!*/outputs/target_robot.json
 
 # Security & Secrets (JANGAN upload API key Roboflow)
 .env

@@ -19,7 +19,8 @@ yolov8s-worldv2.pt
 datasets_raw/
 dataset_gabungan/
 runs/
-outputs/
+outputs/*
+!outputs/target_robot.json
 *.zip
 
 # Python & Virtualenv
