@@ -274,7 +274,48 @@
 * **Alasan:** Menjamin semua variasi warna tutup botol (termasuk putih air mineral) dan koin perak terklasifikasi dengan akurat 100%.
 * **Penerapan / Fungsi:** Screenshot pengujian pengguna yang sebelumnya terdeteksi salah sebagai `Koin` kini berhasil pulih mendeteksi `Tutup Botol (tutup_botol)` dengan akurasi tinggi.
 * **Kendala:** Tutup botol putih dan koin perak silau memiliki nilai saturasi yang hampir identik di ruang warna HSV sehingga harus dibedakan melalui geometri area dan batas diameter fisik.
-* **Progres ke Tahap Berikutnya:** Sistem 100% stabil untuk 3 kelas objek dengan berbagai kondisi warna dan pencahayaan.
+* **Progres ke Tahap Berikutnya:** Menyiapkan rilis penuh untuk integrasi tim robotik di Windows.
+
+#### 8. Pembungkusan Kompatibilitas Penuh Tim Robotik & Integrasi IPC Windows (Rabu, 28 Oktober 2026 - Siang Menjelang Sore)
+* **Apa yang Dikerjakan:**
+  1. Menjawab kebutuhan integrasi lapangan rekan tim robotik yang menjalankan kontroler robot di lingkungan Windows.
+  2. Menyediakan berkas pembungkus (*backward-compatible wrapper*) `05_detect.py` yang memanggil `detect.py` secara transparan agar instruksi lama di buku panduan tetap berfungsi.
+  3. Memperbaiki *batch script* `jalankan_semua.bat` untuk menjalankan seluruh modul dalam 1-klik di Windows.
+  4. Mengatasi *bug* `NameError: name '_text_with_outline' is not defined` pada `detect.py` akibat fungsi bantu HUD yang belum diimpor dari `src/utils.py`.
+  5. Menyesuaikan aturan `.gitignore` agar file `outputs/target_robot.json` dilacak dan dikomit secara resmi di git (sebagai *placeholder* IPC), sementara file tangkapan layar gambar tetap diabaikan.
+  6. Melakukan *full commit* dan *push* menyeluruh (`2188c7f`) ke repository `origin/main` agar seluruh anggota tim robotik dapat melakukan `git pull` tanpa ada berkas yang tertinggal.
+* **Status:** `Selesai`
+* **Alasan:** Tim robotik membutuhkan kompatibilitas biner instan tanpa harus mengedit konfigurasi jalur direktori secara manual di Windows.
+* **Penerapan / Fungsi:** Protokol komunikasi atomic JSON berjalan mulus antara proses inferensi visi komputer di Terminal 1 dan pengontrol robot di Terminal 2.
+* **Kendala:** Di macOS dan Linux, newline zsh sempat memecah baris perintah multi-line argumen `--warna-kelas`. Diatasi dengan penyatuan baris eksekusi.
+* **Progres ke Tahap Berikutnya:** Pengujian interaktif penanganan skenario benda acak penguji.
+
+#### 9. Filtrasi Anti-Barang Acak Penguji, Penghalusan Titik Hisap Vakum, & Kunci Koordinat Statis (Rabu, 28 Oktober 2026 - Malam)
+* **Apa yang Dikerjakan:**
+  1. Menjawab kekhawatiran kritis pengguna mengenai penguji yang membawa barang acak (seperti peraut pensil, karet penghapus, pulpen, kunci) yang ditaruh di konveyor, di mana sebelumnya peraut pensil sempat keliru terdeteksi sebagai charger karena bentuk balok dan confidence rendah ($\approx 0.26 - 0.35$).
+  2. Membangun fungsi verifikasi multi-kriteria `verifikasi_charger_asli()` di `src/detector.py`:
+     - **Batas Dimensi Fisik Nyata:** Kepala charger adaptor HP asli memiliki dimensi fisik signifikan di kamera konveyor ($\min(w, h) \ge 50\text{ px}$, $\text{luas area} \ge 4000\text{ px}^2$). Peraut pensil mini dan penghapus kerdil ($< 50\text{ px}$, area $< 3500\text{ px}^2$) langsung **ditolak 100%**.
+     - **Aspek Rasio Proporsional:** Membatasi rasio balok $0.35 \le AR \le 2.85$ (menolak pulpen tipis, penggaris, atau benda panjang).
+     - **Cek Tekstur Kontras & Struktur Internal:** Menghitung Canny Edge Density dan Deviasi Standar intensitas piksel. Karet penghapus polos yang monokromatik datar tanpa variasi ($\text{std} < 11.0$ dan $\text{edge\_density} < 0.012$) otomatis ditolak pada tingkat keyakinan moderat ($conf < 0.60$). Kepala charger asli yang memiliki kontras tinggi antara bodi plastik dan kaki steker logam / rongga port USB diloloskan.
+     - **Confidence Floor Gating:** Objek kotak asing yang diragukan oleh model ($conf < 0.38$) otomatis dibuang.
+  3. Memperbaiki titik hisap vakum charger (`refine_charger_vacuum_center`):
+     - Menghapus loncatan biner diskrit $\pm 14\text{ mm}$ (dulu melompat antara 0.36 dan 0.64 saat fluktuasi densitas melintasi 10.0).
+     - Menerapkan formulasi kontinu proporsional yang mulus (anti-jitter):
+       $$\text{bias} = 0.50 - 0.14 \times \text{clip}\left(\frac{\Delta \text{density}}{120.0}, -1.0, 1.0\right)$$
+  4. Membangun mekanisme **Coordinate Latch & Spatial Deadzone Hysteresis ($14\text{ px}$)** di `detect.py` dan `sortir_otomatis.py`:
+     - Seketika objek terverifikasi diam (`TARGET_READY`), koordinat fisik $(X, Y, Z)$ dan centroid $(u, v)$ dibekukan/dikunci mati.
+     - Getaran atau noise kamera $\pm 2 - 4\text{ px}$ berada di dalam zona toleransi deadband ($\le 14\text{ px}$) sehingga **koordinat yang dikirim ke robot tidak bergeser satu milimeter pun**.
+     - Kunci hanya dilepas jika objek bergerak jauh ($> 14\text{ px}$) saat konveyor menyala kembali atau objek diangkat robot (`NO_TARGET`).
+  5. Menerapkan *Terminal Debouncing* di `contoh_baca_koordinat_robot.py`:
+     - Mengidentifikasi target berdasarkan `(track_id, round(X, 1), round(Y, 1), label)`.
+     - Simulasi instruksi robot dieksekusi **tepat 1 KALI** per objek unik yang terkunci, menghentikan banjir output teks di terminal.
+  6. Menambahkan 4 unit test otomatis baru (`test_verifikasi_charger_asli_tolak_penghapus_dan_peraut`, `test_detector_smart_filter_tolak_penghapus_sebagai_charger`, `test_refine_charger_vacuum_center_kontinu_tanpa_loncatan`, dan `test_coordinate_latch_dan_deadband_hysteresis`).
+  7. Menjalankan pengujian regresi: seluruh **56 unit tests lolos 100%**, kemudian di-commit dan di-push (`3ff55fc`) ke branch `main`.
+* **Status:** `Selesai`
+* **Alasan:** Menjamin sistem kebal dari manipulasi barang acak penguji, koordinat robot stabil tanpa getar, dan komunikasi terminal bersih.
+* **Penerapan / Fungsi:** Sistem visi komputer siap menghadapi sesi penilaian/pengujian lapangan dengan keandalan industri tingkat tinggi.
+* **Kendala:** Bounding box YOLO alami berfluktuasi beberapa piksel antar-frame pada objek statis, yang diatasi sempurna lewat coordinate latching dan deadband histeresis di level pasca-proses.
+* **Progres ke Tahap Berikutnya:** Pengujian simulasi komprehensif bersama tim mekanik dan kontroler lengan robot RNV3.
 
 ---
 
@@ -288,8 +329,11 @@
 │ Resolusi Standar Deteksi         │ 1280 × 720 piksel (Webcam HD 720p) │
 │ Kecepatan Komputasi (FPS)        │ 28 – 30 FPS (Apple Silicon MPS / GPU│
 │ Latensi Transformasi Koordinat   │ < 1 milidetik (Homography 2D)      │
-│ Akurasi Titik Hisap Charger      │ Shift otomatis ke bidang datar iT. │
-│ Jumlah Unit Tests Otomatis       │ 52 / 52 Tests Lolos (100% Passing)  │
+│ Akurasi Titik Hisap Charger      │ Kontinu proporsional ke bodi iT.   │
+│ Fitur Anti-Objek Acak Penguji    │ verifikasi_charger_asli() Aktif    │
+│ Kunci Koordinat Objek Diam       │ Coordinate Latch + Deadband 14 px   │
+│ Anti-Banjir Output Terminal      │ Single-Shot Target Key Debounce     │
+│ Jumlah Unit Tests Otomatis       │ 56 / 56 Tests Lolos (100% Passing)  │
 │ Total Dataset Bersih Terkumpul   │ 6.607 Gambar Bebas Blur & Oklusi    │
 │ Waktu Kalibrasi Ulang di Tempat  │ 0 Menit (Memakai Blueprint Manila)  │
 │ Mode Operasi Robotik             │ Standalone Stop-and-Go (Hands-Free) │

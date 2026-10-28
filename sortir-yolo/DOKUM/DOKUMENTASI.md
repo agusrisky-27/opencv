@@ -319,16 +319,16 @@ Model Deep Learning (YOLO) adalah pendeteksi berbasis probabilitas statistik. Da
 
 ---
 
-### C. Refinement Titik Hisap Vacuum Charger ([`refine_charger_vacuum_center`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L320-L360)) 🔌
-* **Tujuan:** Menjamin karet hisap hisapan pompa vakum robot arm RNV3 mendarat pada bidang datar plastik kedap udara.
+### C. Refinement Titik Hisap Vacuum Charger ([`refine_charger_vacuum_center`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L382-L425)) 🔌
+* **Tujuan:** Menjamin karet hisap hisapan pompa vakum robot arm RNV3 mendarat pada bidang datar plastik kedap udara tanpa melompat-lompat (*anti-jitter*).
 * **Mekanisme Kerja:**
   1. Memotong crop bounding box charger.
   2. Menerapkan segmentasi biner Otsu + operasi morfologi pembukaan (*morphological opening*).
   3. Menganalisis rasio $w / h$ untuk mengetahui orientasi pin colokan (vertikal atau horizontal).
-  4. Menghitung distribusi densitas massa plastik vs kaki logam:
-     - Jika pin colokan berada di atas, titik hisap digeser ke bawah ($bias = 0.64$).
-     - Jika pin colokan berada di bawah, titik hisap digeser ke atas ($bias = 0.36$).
-  5. Titik hisap terkunci presisi di pusat bidang datar kepala charger (area di bawah logo `iT.`), mencegah kebocoran hisap vakum pada celah kaki steker logam.
+  4. Menghitung selisih densitas massa bodi plastik vs kaki steker logam ($\Delta \text{density} = \text{density}_{\text{sisi } 1} - \text{density}_{\text{sisi } 2}$).
+  5. Menerapkan formulasi proporsional kontinu mulus tanpa loncatan diskrit:
+     $$\text{bias} = 0.50 - 0.14 \times \text{clip}\left(\frac{\Delta \text{density}}{120.0}, -1.0, 1.0\right)$$
+  6. **Anti-Jitter:** Menghilangkan loncatan biner 28 piksel ($\pm 14\text{ mm}$) yang sebelumnya terjadi saat fluktuasi cahaya melewati batas 10.0. Titik hisap kini bergeser secara halus dan stabil mengunci di bidang datar plastik charger.
 
 ---
 
@@ -340,7 +340,19 @@ Model Deep Learning (YOLO) adalah pendeteksi berbasis probabilitas statistik. Da
 
 ---
 
-### E. Penstabil Suara Terbanyak Multi-Frame ([`Penstabil`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/utils.py#L107-L230))
+### E. Verifikasi Charger Asli vs Benda Acak Penguji ([`verifikasi_charger_asli`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/detector.py#L325-L380)) 🛡️
+* **Masalah Pengujian:** Penguji sering menguji sistem dengan meletakkan benda acak yang tidak terduga di atas konveyor, seperti peraut pensil, karet penghapus, kartu, atau pulpen. Model AI YOLOv8 yang bekerja pada `--conf 0.25` dapat keliru menduga benda balok kecil (seperti penghapus/peraut) sebagai charger dengan confidence $0.26 - 0.35$.
+* **Lapisan Verifikasi Ketat:**
+  1. **Dimensi Fisik Minimum:** Adaptor charger HP nyata memiliki ukuran fisik yang jauh lebih besar dari peraut/penghapus mini. Diterapkan batas keras: $\min(w, h) \ge 50\text{ px}$ dan luas area $\ge 4000\text{ px}^2$. Peraut pensil mini ($< 50\text{ px}$) langsung **dieliminasi 100%**.
+  2. **Aspek Rasio Balok Proporsional:** Dibatasi $0.35 \le AR \le 2.85$ (menolak pulpen, pensil panjang, atau kabel lurus).
+  3. **Analisis Tekstur Kontras (Canny & Deviasi Standar):**
+     - Karet penghapus polos memiliki permukaan seragam tanpa variasi warna ($\text{std} < 11.0$ dan kerapatan Canny edges $< 0.012$). Objek datar polos ini otomatis ditolak jika confidence $< 0.60$.
+     - Kepala charger asli memiliki kontras tinggi antara bodi plastik polimer dan kaki steker logam hitam/perak atau celah rongga port USB ($\text{std} \ge 14.0$, $\text{edges} \ge 0.020$).
+  4. **Confidence Floor Gating:** Objek kotak yang diragukan dengan confidence $< 0.38$ otomatis dibuang.
+
+---
+
+### F. Penstabil Suara Terbanyak Multi-Frame ([`Penstabil`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/src/utils.py#L107-L230))
 * Mencegah kedipan (*flicker*) label pada video live dengan sistem voting riwayat 5 frame terakhir (*majority voting buffer*).
 * Dilengkapi *Exponential Moving Average (EMA)* untuk menghaluskan koordinat bounding box saat kamera terkena getaran mesin konveyor.
 
@@ -467,7 +479,19 @@ Agar robot tidak bergerak sembarangan saat objek meluncur di konveyor:
 * `status: "TARGET_READY"` $\rightarrow$ Objek terbukti diam total, koordinat $(X, Y, Z)$ terkunci permanen, robot mengeksekusi Pick & Place.
 * `status: "NO_TARGET"` $\rightarrow$ Benda bukan target sortir atau area kosong, konveyor langsung dinyalakan kembali (`RESUME`).
 
-### D. Firmware Arduino Siap Pakai
+### D. Penguncian Koordinat Statis (Coordinate Latch & Spatial Deadzone Hysteresis)
+* **Masalah Lapangan:** Bounding box YOLO alami bergetar tipis $\pm 2 - 4\text{ px}$ akibat derau pencahayaan kamera (*sensor noise*). Jika koordinat $(X, Y, Z)$ selalu dihitung ulang setiap 33 ms, koordinat robot akan bergoyang $\pm 1 - 2\text{ mm}$ dan dapat mereset timer stabilitas.
+* **Mekanisme Latch & Histeresis ($14\text{ px}$):**
+  1. Begitu objek terkonfirmasi diam (`TARGET_READY`), sistem mengunci (*latches*) seluruh parameter: `locked_target = best_t` dan `locked_center = (cx, cy)`.
+  2. Selama pergeseran sentroid frame-ke-frame masih berada di dalam radius deadband histeresis ($\le 14\text{ px}$), sistem **membekukan nilai koordinat** yang sama persis.
+  3. Kunci hanya terlepas jika objek berpindah jauh ($> 14\text{ px}$) saat konveyor kembali dinyalakan atau objek berhasil dipindahkan oleh lengan robot.
+
+### E. Anti-Banjir Output Terminal (Single-Shot Target Key Debounce)
+* Di program [`contoh_baca_koordinat_robot.py`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/contoh_baca_koordinat_robot.py), diterapkan sistem debouncing berbasis kunci unik target:
+  $$\text{target\_key} = (\text{track\_id}, \text{round}(X, 1), \text{round}(Y, 1), \text{label})$$
+* Simulasi urutan perintah gerak robot (G-Code: meluncur di atas objek $\rightarrow$ vakum ON $\rightarrow$ angkat $\rightarrow$ lepas ke wadah) dieksekusi **tepat 1 KALI** per objek unik yang tiba. Terminal tetap bersih, tenang, dan tidak dibanjiri teks berulang saat menunggu benda dipindahkan.
+
+### F. Firmware Arduino Siap Pakai
 Tersedia firmware siap flash di [`arduino/conveyor_ir_controller.ino`](file:///Users/agusrisky/Documents/opencv_3class/sortir-yolo/arduino/conveyor_ir_controller.ino) yang menghubungkan sensor IR (Pin 2), Relay Motor (Pin 7), dan komunikasi serial USB dua arah (`IR_TRIGGER` $\leftrightarrow$ `PICK` / `RESUME`).
 
 ---
@@ -477,19 +501,25 @@ Tersedia firmware siap flash di [`arduino/conveyor_ir_controller.ino`](file:///U
 ```
 opencv_3class/
 ├── .gitignore                       # Proteksi kredensial API & file cache lokal
-├── DOKUMENTASI.md                   # Master Technical Knowledge Base (file ini)
-├── WORK_DOKUMENTATION.md            # Log kronologis laporan kerja mingguan
-├── PANDUAN_TIM_ROBOTIK.md           # Panduan integrasi khusus rekan tim robotik Windows
-├── robot_calib.json                 # Parameter matriks Homography & koordinat wadah drop
-├── requirements.txt                 # Dependensi pustaka Python
-├── pytest.ini                       # Konfigurasi automated testing
+├── README.md                        # Ringkasan cepat & petunjuk bagi AI agent
+├── DOKUM/                           # DIREKTORI DOKUMENTASI PROYEK
+│   ├── DOKUMENTASI.md               # Master Technical Knowledge Base (file ini)
+│   ├── WORK_DOKUMENTATION.md        # Log kronologis laporan kerja harian/mingguan
+│   ├── PANDUAN_TIM_ROBOTIK.md       # Panduan integrasi khusus rekan tim robotik Windows
+│   └── README_ARSIP.md              # Arsip dokumentasi awal
 │
 └── sortir-yolo/                     # DIREKTORI KODE UTAMA
-    ├── detect.py                    # Program utama visualisasi real-time (imgsz=1280, conf=0.25)
+    ├── 05_detect.py                 # Pembungkus backward-compatible untuk tim robotik
+    ├── detect.py                    # Program visualisasi real-time (imgsz=1280, conf=0.25, Latch)
     ├── sortir_otomatis.py           # Controller sortir otonom 100% hands-free (Stop-and-Go)
     ├── sortir_vision_api.py         # Modul API visi mandiri siap panggil oleh skrip robot
-    ├── contoh_baca_koordinat_robot.py # Demo baca koordinat robot (Mode JSON / API / Infrared)
+    ├── contoh_baca_koordinat_robot.py # Demo baca koordinat robot (Debounced Single-Shot)
+    ├── tes_kirim_koordinat.py       # Alat uji pengiriman koordinat & simulasi IR interaktif
     ├── kalibrasi_robot.py           # GUI interaktif kalibrasi 4-titik kamera ke robot mm
+    ├── jalankan_semua.bat           # Batch launcher 1-klik untuk rekan tim Windows
+    ├── robot_calib.json             # Parameter matriks Homography & koordinat wadah drop
+    ├── outputs/
+    │   └── target_robot.json        # Berkas atomic JSON IPC real-time untuk robot
     │
     ├── capture.py                   # Perekam sampel gambar baru standar
     ├── extra_capture_data.py        # Perekam data multi-kelas keyboard 1, 2, 3, b
