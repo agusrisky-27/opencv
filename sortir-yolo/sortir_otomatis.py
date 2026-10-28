@@ -122,11 +122,13 @@ class AutoSortirController:
                 # Cek apakah posisi benda diam / berhenti di konveyor
                 if last_center is not None:
                     dist = np.hypot(cx - last_center[0], cy - last_center[1])
-                    if dist <= motion_threshold_px:
+                    # Batas histeresis: saat objek sudah diproses, butuh pergeseran nyata > 14 px untuk reset
+                    active_threshold = 14.0 if already_processed else motion_threshold_px
+                    if dist <= active_threshold:
                         # Benda mulai atau sedang diam di konveyor
                         if stationary_start == 0.0:
                             stationary_start = time.time()
-                            if last_motion_state != "WAITING":
+                            if last_motion_state != "WAITING" and not already_processed:
                                 self.vision.set_status(
                                     "WAITING_STATIONARY",
                                     f"Objek '{top_det.label}' mulai berhenti, menunggu stabil...",
@@ -156,7 +158,7 @@ class AutoSortirController:
                                 already_processed = True
                                 last_motion_state = "PROCESSED"
                     else:
-                        # Benda masih meluncur / bergerak di konveyor -> TAHAN DATA
+                        # Benda benar-benar meluncur / bergerak di konveyor (> 14 px) -> TAHAN DATA
                         if last_motion_state != "MOVING":
                             self.vision.set_status(
                                 "CONVEYOR_MOVING",

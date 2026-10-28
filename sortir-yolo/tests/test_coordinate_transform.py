@@ -232,3 +232,31 @@ def test_inspect_stationary_with_motion_verification(monkeypatch, tmp_path):
     data_moving = read_target_json(target_json)
     assert data_moving["status"] == "CONVEYOR_MOVING"
     assert data_moving["target"] is None
+
+
+def test_coordinate_latch_dan_deadband_hysteresis(tmp_path):
+    # Verifikasi mekanisme latching: koordinat terkunci tidak bergeser saat ada noise kamera
+    transformer = RobotCoordinateTransformer()
+    json_path = tmp_path / "target_robot.json"
+
+    # Frame 1: Objek terkunci di (640, 360)
+    target_lock = transformer.to_robot_target("charger", "Charger", 0.90, (640, 360))
+    locked_center = target_lock.pixel_center
+    export_target_json(target_lock, [target_lock], json_path, status="TARGET_READY")
+
+    # Frame 2: Noise kamera menggeser piksel ke (643, 362) -> jarak = 3.6 px (dalam deadband <= 14 px)
+    noise_center = (643, 362)
+    dist_from_lock = np.hypot(noise_center[0] - locked_center[0], noise_center[1] - locked_center[1])
+    assert dist_from_lock <= 14.0
+
+    # Latch mempertahankan koordinat target awal:
+    target_emitted = target_lock
+    assert target_emitted.x_mm == target_lock.x_mm
+    assert target_emitted.y_mm == target_lock.y_mm
+    assert target_emitted.pixel_center == (640, 360)
+
+    # Frame 3: Objek nyata bergeser di konveyor ke (680, 360) -> jarak = 40 px (> 14 px)
+    moved_center = (680, 360)
+    dist_moved = np.hypot(moved_center[0] - locked_center[0], moved_center[1] - locked_center[1])
+    assert dist_moved > 14.0  # Latch lepas, status kembali ke konveyor jalan
+

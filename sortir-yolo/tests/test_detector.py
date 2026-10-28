@@ -233,6 +233,72 @@ def test_white_bottle_cap_correction():
     assert dets[0].catatan == "koreksi tutup putih"
 
 
+def test_verifikasi_charger_asli_tolak_penghapus_dan_peraut():
+    from src.detector import verifikasi_charger_asli
+    frame = np.full((720, 1280, 3), (35, 95, 45), dtype=np.uint8)  # alas konveyor hijau
+
+    # 1. Peraut pensil mini (ukuran kecil 40x30 px, area 1200 px^2) -> HARUS DITOLAK
+    bbox_peraut = (200, 200, 240, 230)
+    assert verifikasi_charger_asli(frame, bbox_peraut, confidence=0.75) is False
+
+    # 2. Karet penghapus polos (ukuran 80x55 px, tapi tekstur datar monokromatik tanpa pin/kontras)
+    # BGR abu-abu datar seragam
+    frame[300:360, 400:480] = (180, 180, 180)
+    bbox_penghapus = (400, 300, 480, 360)
+    # Jika model ragu/confidence moderat (<0.60) pada penghapus polos -> HARUS DITOLAK
+    assert verifikasi_charger_asli(frame, bbox_penghapus, confidence=0.42) is False
+
+    # 3. Kepala charger asli (ukuran 120x100 px, bodi putih dengan pin steker gelap bertekstur kontras tinggi)
+    # Kepala bodi charger
+    frame[500:580, 600:720] = (245, 245, 245)
+    # Pin steker logam hitam pekat
+    frame[580:620, 620:640] = (15, 15, 15)
+    frame[580:620, 680:700] = (15, 15, 15)
+    bbox_charger = (600, 500, 720, 620)
+    assert verifikasi_charger_asli(frame, bbox_charger, confidence=0.88) is True
+
+
+def test_detector_smart_filter_tolak_penghapus_sebagai_charger():
+    # Simulasi penguji meletakkan penghapus mini (40x35 px) dan AI salah memprediksi sebagai charger (conf 0.32)
+    class FakeResultCharger:
+        names = {0: "koin", 1: "charger", 2: "tutup_botol"}
+        def __init__(self, boxes):
+            self.boxes = boxes
+
+    class FakeModelCharger:
+        def __init__(self, boxes):
+            self._boxes = boxes
+        def predict(self, frame, **kwargs):
+            return [FakeResultCharger(self._boxes)]
+
+    frame = np.full((720, 1280, 3), (35, 95, 45), dtype=np.uint8)
+    # Box peraut/penghapus mini
+    box_penghapus = FakeBox((300, 300, 345, 335), 1, 0.32)  # class 1 = charger
+    det = Detector(model=FakeModelCharger([box_penghapus]), device="cpu", smart_filter=True)
+    dets = det.detect(frame)
+    # Benda acak penguji harus ditolak 100% (tidak terbaca sama sekali)
+    assert len(dets) == 0
+
+
+def test_refine_charger_vacuum_center_kontinu_tanpa_loncatan():
+    from src.detector import refine_charger_vacuum_center
+    crop = np.zeros((200, 100, 3), dtype=np.uint8)
+    crop[0:120, 10:90] = 230
+    crop[120:200, 25:35] = 180
+    crop[120:200, 65:75] = 180
+    bbox = (100, 100, 200, 300)
+
+    # Periksa kontinuitas: variasi kecil pada kecerahan piksel
+    cx1, cy1 = refine_charger_vacuum_center(crop, bbox)
+    crop_sedikit_berbeda = crop.copy()
+    crop_sedikit_berbeda[10:30, 20:40] = 220
+    cx2, cy2 = refine_charger_vacuum_center(crop_sedikit_berbeda, bbox)
+
+    assert cx1 == 150 and cx2 == 150
+    # Jarak pergeseran harus sangat kecil (halus / anti-jitter, bukan loncatan 28 px)
+    assert abs(cy1 - cy2) <= 3
+
+
 
 
 

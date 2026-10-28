@@ -29,8 +29,8 @@ def jalankan_mode_json() -> None:
     print("Pastikan 'sortir_otomatis.py' atau 'detect.py' sedang berjalan.")
     print("Menunggu deteksi objek... (Tekan Ctrl+C untuk keluar)\n")
 
-    last_ts = 0.0
     last_status = ""
+    last_processed_key = None
     try:
         while True:
             data = read_target_json()
@@ -42,36 +42,48 @@ def jalankan_mode_json() -> None:
                 if status != last_status:
                     if status == "CONVEYOR_MOVING":
                         print(f"⏩ [STATUS: CONVEYOR_MOVING] {msg} -> Robot STANDBY (Data ditahan).")
+                        last_processed_key = None
                     elif status == "WAITING_STATIONARY":
                         print(f"⏳ [STATUS: WAITING_STATIONARY] {msg} -> Robot MENUNGGU getaran inersia reda.")
+                        last_processed_key = None
                     elif status == "NO_TARGET":
                         print(f"⛔ [STATUS: NO_TARGET] {msg} -> Robot STANDBY di posisi HOME.")
+                        last_processed_key = None
                     last_status = status
 
                 if status == "TARGET_READY":
-                    ts = data.get("timestamp", 0.0)
-                    if ts != last_ts:
-                        last_ts = ts
-                        target = data["target"]
-                        kelas = target["label"]
+                    target = data.get("target")
+                    if target:
                         r = target["robot_mm"]
-                        drop = target["drop_mm"]
+                        # Kunci unik identifikasi target: ID pelacak / posisi fisik mm / kelas
+                        target_key = (
+                            target.get("track_id"),
+                            round(r["x"], 1),
+                            round(r["y"], 1),
+                            target.get("label"),
+                        )
+                        # Eksekusi hanya 1 KALI per objek unik yang terkunci (cegah spam terminal)
+                        if target_key != last_processed_key:
+                            last_processed_key = target_key
+                            kelas = target["label"]
+                            drop = target["drop_mm"]
 
-                        print("\n" + "=" * 60)
-                        print(f"🎯 [DATA DITERIMA OLEH ROBOT] Target Terkunci: {kelas}")
-                        print(f"   📍 Titik Ambil di Konveyor : X={r['x']} mm, Y={r['y']} mm, Z={r['z']} mm")
-                        print(f"   📦 Titik Wadah Sortir      : X={drop['x']} mm, Y={drop['y']} mm, Z={drop['z']} mm")
-                        print("-" * 60)
-                        print("   🦾 [SIMULASI EKSEKUSI GERAK LENGAN ROBOT]:")
-                        print(f"      1. G0 X{r['x']} Y{r['y']} Z{r['z'] + 25:.1f} F100  -> Meluncur aman di atas objek")
-                        print(f"      2. G0 Z{r['z']:.1f} F40                            -> Ujung vakum turun menyentuh objek")
-                        print(f"      3. M1                                              -> Pompa Vakum ON (Menghisap)")
-                        print(f"      4. G0 Z{r['z'] + 30:.1f} F80                       -> Mengangkat objek dari sabuk")
-                        print(f"      5. G0 X{drop['x']} Y{drop['y']} F100               -> Bergerak ke kotak wadah {kelas}")
-                        print(f"      6. M2 / M6                                         -> Pompa Vakum OFF (Lepas ke wadah)")
-                        print(f"      7. G0 X0 Y150 Z30 F100                             -> Kembali standby ke posisi HOME")
-                        print("   --> ✅ SIMULASI SUKSES: Objek berhasil dipindahkan!")
-                        print("=" * 60 + "\n")
+                            print("\n" + "=" * 60)
+                            print(f"🎯 [DATA DITERIMA OLEH ROBOT] Target Terkunci: {kelas}")
+                            print(f"   📍 Titik Ambil di Konveyor : X={r['x']} mm, Y={r['y']} mm, Z={r['z']} mm")
+                            print(f"   📦 Titik Wadah Sortir      : X={drop['x']} mm, Y={drop['y']} mm, Z={drop['z']} mm")
+                            print("-" * 60)
+                            print("   🦾 [SIMULASI EKSEKUSI GERAK LENGAN ROBOT]:")
+                            print(f"      1. G0 X{r['x']} Y{r['y']} Z{r['z'] + 25:.1f} F100  -> Meluncur aman di atas objek")
+                            print(f"      2. G0 Z{r['z']:.1f} F40                            -> Ujung vakum turun menyentuh objek")
+                            print(f"      3. M1                                              -> Pompa Vakum ON (Menghisap)")
+                            print(f"      4. G0 Z{r['z'] + 30:.1f} F80                       -> Mengangkat objek dari sabuk")
+                            print(f"      5. G0 X{drop['x']} Y{drop['y']} F100               -> Bergerak ke kotak wadah {kelas}")
+                            print(f"      6. M2 / M6                                         -> Pompa Vakum OFF (Lepas ke wadah)")
+                            print(f"      7. G0 X0 Y150 Z30 F100                             -> Kembali standby ke posisi HOME")
+                            print("   --> ✅ SIMULASI SUKSES: Objek berhasil dipindahkan!")
+                            print("   --> ⏳ Menunggu objek berikutnya di konveyor...")
+                            print("=" * 60 + "\n")
 
             time.sleep(0.1)
     except KeyboardInterrupt:

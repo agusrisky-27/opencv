@@ -198,10 +198,17 @@ def run_stream(
     print("  [SPACE]     : Manual Trigger IR (Kunci koordinat objek diam seketika)")
     print("  [+] / [-]   : Naikkan / turunkan confidence threshold\n")
 
+    locked_target: RobotTarget | None = None
+    locked_center: tuple[int, int] | None = None
     last_center: tuple[int, int] | None = None
     stationary_start: float = 0.0
     settle_delay: float = getattr(args, "settle_delay", 0.6)
-    motion_thresh: float = getattr(args, "motion_thresh", 3.5)
+    motion_thresh: float = getattr(args, "motion_thresh", 4.0)
+    unlock_thresh: float = 14.0  # Histeresis deadband: butuh pergeseran nyata > 14 px untuk lepas lock
+    missing_count: int = 0
+    max_missing_frames: int = 5  # Toleransi flicker 5 frame (~150 ms)
+    last_exported_status = ""
+    last_export_time = 0.0
     robot_status = "NO_TARGET"
     robot_status_msg = "Konveyor kosong"
 
@@ -243,41 +250,38 @@ def run_stream(
                 ]
                 best_t = choose_best_target(robot_targets, roi=roi_coords if roi_active else None)
 
-                # Logika Stop-and-Go: Menahan data saat objek bergerak, mengunci data saat diam stabil
+                # Logika Stop-and-Go dengan Coordinate Latch & Spatial Deadzone Hysteresis
+                now_t = time.time()
                 if best_t is not None:
+                    missing_count = 0
                     cx, cy = best_t.pixel_center
-                    if last_center is not None:
-                        dist = np.hypot(cx - last_center[0], cy - last_center[1])
-                        if dist <= motion_thresh:
-                            # Benda mulai atau sedang diam di konveyor
-                            if stationary_start == 0.0:
-                                stationary_start = time.time()
-                            elapsed = time.time() - stationary_start
-                            if elapsed >= settle_delay:
-                                robot_status = "TARGET_READY"
-                                robot_status_msg = f"DIAM TOTAL ({elapsed:.1f}s) -> TARGET TERKUNCI"
+
+                    # Kasus 1: Koordinat sudah terkunci (TARGET_READY)
+                    if locked_target is not None and locked_center is not None:
+                        dist_from_lock = np.hypot(cx - locked_center[0], cy - locked_center[1])
+                        # Selama objek masih di area toleransi (deadband <= 14 px) dan kelas konsisten:
+                        if dist_from_lock <= unlock_thresh and best_t.class_name == locked_target.class_name:
+                            # BEKUKAN KOORDINAT (KUNCI STATIS): Jangan biarkan noise kamera merubah (X, Y, Z)!
+                            best_t = locked_target
+                            robot_status = "TARGET_READY"
+                            robot_status_msg = f"TERKUNCI (X={locked_target.x_mm}, Y={locked_target.y_mm}, Z={locked_target.z_mm})"
+                            if robot_status != last_exported_status or (now_t - last_export_time) >= 0.5:
                                 export_target_json(
-                                    best_t,
+                                    locked_target,
                                     robot_targets,
                                     DEFAULT_TARGET_JSON,
                                     status="TARGET_READY",
-                                    message=f"Benda {best_t.label} diam terverifikasi. Koordinat terkunci.",
+                                    message=f"Benda {locked_target.label} diam terverifikasi. Koordinat terkunci.",
                                 )
-                            else:
-                                robot_status = "WAITING_STATIONARY"
-                                robot_status_msg = f"MEREDAM INERSIA ({elapsed:.1f}s/{settle_delay:.1f}s)..."
-                                export_target_json(
-                                    None,
-                                    robot_targets,
-                                    DEFAULT_TARGET_JSON,
-                                    status="WAITING_STATIONARY",
-                                    message=f"Menunggu inersia reda ({elapsed:.1f}s/{settle_delay:.1f}s)...",
-                                )
+                                last_exported_status = robot_status
+                                last_export_time = now_t
                         else:
-                            # Benda masih meluncur di konveyor -> TAHAN KOORDINAT
+                            # Objek bergerak nyata (> 14 px) atau jenis benda berganti -> Buka kunci
+                            locked_target = None
+                            locked_center = None
                             stationary_start = 0.0
                             robot_status = "CONVEYOR_MOVING"
-                            robot_status_msg = "KONVEYOR JALAN (Data ditahan)"
+                            robot_status_msg = "KONVEYOR JALAN (Objek bergeser)"
                             export_target_json(
                                 None,
                                 robot_targets,
@@ -285,15 +289,79 @@ def run_stream(
                                 status="CONVEYOR_MOVING",
                                 message="Objek sedang bergerak di konveyor - data ditahan",
                             )
+                            last_exported_status = robot_status
+                            last_export_time = now_t
                     else:
-                        stationary_start = time.time()
+                        # Kasus 2: Belum terkunci -> Periksa apakah benda mulai diam
+                        if last_center is not None:
+                            dist = np.hypot(cx - last_center[0], cy - last_center[1])
+                            if dist <= motion_thresh:
+                                if stationary_start == 0.0:
+                                    stationary_start = now_t
+                                elapsed = now_t - stationary_start
+                                if elapsed >= settle_delay:
+                                    # KUNCI KOORDINAT SEKARANG (LATCH)
+                                    locked_target = best_t
+                                    locked_center = (cx, cy)
+                                    robot_status = "TARGET_READY"
+                                    robot_status_msg = f"DIAM TOTAL ({elapsed:.1f}s) -> TARGET TERKUNCI"
+                                    export_target_json(
+                                        locked_target,
+                                        robot_targets,
+                                        DEFAULT_TARGET_JSON,
+                                        status="TARGET_READY",
+                                        message=f"Benda {locked_target.label} diam terverifikasi. Koordinat terkunci.",
+                                    )
+                                    last_exported_status = robot_status
+                                    last_export_time = now_t
+                                else:
+                                    robot_status = "WAITING_STATIONARY"
+                                    robot_status_msg = f"MEREDAM INERSIA ({elapsed:.1f}s/{settle_delay:.1f}s)..."
+                                    if robot_status != last_exported_status or (now_t - last_export_time) >= 0.2:
+                                        export_target_json(
+                                            None,
+                                            robot_targets,
+                                            DEFAULT_TARGET_JSON,
+                                            status="WAITING_STATIONARY",
+                                            message=f"Menunggu inersia reda ({elapsed:.1f}s/{settle_delay:.1f}s)...",
+                                        )
+                                        last_exported_status = robot_status
+                                        last_export_time = now_t
+                            else:
+                                stationary_start = 0.0
+                                robot_status = "CONVEYOR_MOVING"
+                                robot_status_msg = "KONVEYOR JALAN (Data ditahan)"
+                                if robot_status != last_exported_status or (now_t - last_export_time) >= 0.5:
+                                    export_target_json(
+                                        None,
+                                        robot_targets,
+                                        DEFAULT_TARGET_JSON,
+                                        status="CONVEYOR_MOVING",
+                                        message="Objek sedang bergerak di konveyor - data ditahan",
+                                    )
+                                    last_exported_status = robot_status
+                                    last_export_time = now_t
+                        else:
+                            stationary_start = now_t
                     last_center = (cx, cy)
                 else:
-                    last_center = None
-                    stationary_start = 0.0
-                    robot_status = "NO_TARGET"
-                    robot_status_msg = "KONVEYOR KOSONG"
-                    export_target_json(None, [], DEFAULT_TARGET_JSON, status="NO_TARGET", message="Area konveyor kosong")
+                    # Tidak ada objek terdeteksi di frame ini
+                    if locked_target is not None and missing_count < max_missing_frames:
+                        missing_count += 1
+                        best_t = locked_target
+                        robot_status = "TARGET_READY"
+                    else:
+                        missing_count = 0
+                        locked_target = None
+                        locked_center = None
+                        last_center = None
+                        stationary_start = 0.0
+                        robot_status = "NO_TARGET"
+                        robot_status_msg = "KONVEYOR KOSONG"
+                        if last_exported_status != "NO_TARGET":
+                            export_target_json(None, [], DEFAULT_TARGET_JSON, status="NO_TARGET", message="Area konveyor kosong")
+                            last_exported_status = "NO_TARGET"
+                            last_export_time = now_t
 
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev, 1e-6)) if fps else 1.0 / max(now - prev, 1e-6)
@@ -333,6 +401,8 @@ def run_stream(
                 break
             if key == 32:  # Tombol SPACE (Manual Trigger / Kunci Koordinat)
                 if best_t is not None:
+                    locked_target = best_t
+                    locked_center = best_t.pixel_center
                     robot_status = "TARGET_READY"
                     export_target_json(
                         best_t,
@@ -341,6 +411,8 @@ def run_stream(
                         status="TARGET_READY",
                         message=f"Manual SPACE trigger: {best_t.label} terkunci.",
                     )
+                    last_exported_status = robot_status
+                    last_export_time = time.time()
                     print(f"\n🎯 [SPACE TRIGGER] Koordinat Terkunci & Dikirim: {best_t.label}")
                     print(f"   Ambil : X={best_t.x_mm} mm, Y={best_t.y_mm} mm, Z={best_t.z_mm} mm")
                     print(f"   Drop  : X={best_t.drop_x_mm} mm, Y={best_t.drop_y_mm} mm, Z={best_t.drop_z_mm} mm\n")
