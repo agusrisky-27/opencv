@@ -15,9 +15,8 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -298,7 +297,7 @@ def export_target_json(
         else:
             tmp_file.rename(p)
         return True
-    except Exception as exc:
+    except Exception:
         if tmp_file.exists():
             try:
                 tmp_file.unlink()

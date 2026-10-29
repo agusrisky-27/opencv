@@ -14,7 +14,7 @@ Hasilnya SELALU perlu dicek mata lewat gambar preview.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import cv2
 import numpy as np

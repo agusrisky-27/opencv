@@ -34,6 +34,7 @@ from src.config import (
 )
 from src.coordinate_transform import (
     RobotCoordinateTransformer,
+    RobotTarget,
     choose_best_target,
     export_target_json,
 )
@@ -169,9 +170,6 @@ def run_stream(
     args: argparse.Namespace,
     transformer: RobotCoordinateTransformer | None = None,
 ) -> int:
-    is_network = isinstance(source, str) and (
-        source.startswith("http://") or source.startswith("https://") or source.startswith("rtsp://")
-    )
     cam_cls = Camera if args.no_threaded else ThreadedCamera
     try:
         cam = cam_cls(source, args.width, args.height).open(auto_fallback=True)
