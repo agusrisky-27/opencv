@@ -60,7 +60,7 @@ def main() -> int:
     )
     ap.add_argument("--conf", type=float, default=0.15, help="confidence threshold (default: 0.15)")
     ap.add_argument("--block", type=int, default=10, help="ukuran blok foto berurutan")
-    ap.add_argument("--valid-every", type=int, default=5, help="tiap blok ke-N jadi valid (5 = 20%)")
+    ap.add_argument("--valid-every", type=int, default=5, help="tiap blok ke-N jadi valid (5 = 20%%)")
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
 

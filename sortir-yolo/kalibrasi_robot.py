@@ -57,34 +57,13 @@ def main() -> int:
     clicked_pixel_pts: list[tuple[int, int]] = []
     robot_pts: list[tuple[float, float]] = []
     current_mouse: tuple[int, int] = (args.width // 2, args.height // 2)
+    pending_pixel_click: tuple[int, int] | None = None
 
     def on_mouse(event: int, x: int, y: int, flags: int, param: None) -> None:
-        nonlocal current_mouse
+        nonlocal current_mouse, pending_pixel_click
         current_mouse = (x, y)
-        if event == cv2.EVENT_LBUTTONDOWN and len(clicked_pixel_pts) < 4:
-            clicked_pixel_pts.append((x, y))
-            idx = len(clicked_pixel_pts)
-            print(f"\n[Titik #{idx}] Terpilih di piksel ({x}, {y}).")
-            print(f"Masukkan koordinat fisik Robot (mm) untuk Titik #{idx}:")
-            try:
-                rx_str = input(f"   X_robot (mm) Titik #{idx}: ").strip()
-                ry_str = input(f"   Y_robot (mm) Titik #{idx}: ").strip()
-                rx = float(rx_str)
-                ry = float(ry_str)
-                robot_pts.append((rx, ry))
-                print(f"✅ Titik #{idx} dicatat: Piksel=({x}, {y}) -> Robot=({rx:.1f}, {ry:.1f}) mm")
-
-                if len(clicked_pixel_pts) == 4:
-                    print("\n🎯 Menghitung Matriks Homography 4-Titik...")
-                    ok = transformer.set_homography_points(clicked_pixel_pts, robot_pts)
-                    if ok:
-                        transformer.save_config(config_path)
-                        print(f"🎉 SUKSES! Matriks Kalibrasi tersimpan di '{config_path}'")
-                    else:
-                        print("❌ Gagal menghitung Homography. Periksa kembali input titik.")
-            except Exception as e:
-                print(f"⚠️ Input dibatalkan / format salah: {e}")
-                clicked_pixel_pts.pop()
+        if event == cv2.EVENT_LBUTTONDOWN and len(clicked_pixel_pts) < 4 and pending_pixel_click is None:
+            pending_pixel_click = (x, y)
 
     cv2.namedWindow(WINDOW)
     cv2.setMouseCallback(WINDOW, on_mouse)
@@ -105,6 +84,40 @@ def main() -> int:
                 break
 
             h, w = frame.shape[:2]
+
+            # Jika ada klik baru yang menunggu input koordinat robot dari terminal
+            if pending_pixel_click is not None:
+                px, py = pending_pixel_click
+                idx = len(clicked_pixel_pts) + 1
+                cv2.circle(frame, (px, py), 9, (0, 0, 255), -1)
+                cv2.putText(frame, f">> Titik #{idx} terpilih! Masukkan X & Y (mm) di terminal...", (20, h - 45),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+                cv2.imshow(WINDOW, frame)
+                cv2.waitKey(1)
+
+                print(f"\n[Titik #{idx}] Terpilih di piksel ({px}, {py}).")
+                print(f"Masukkan koordinat fisik Robot (mm) untuk Titik #{idx}:")
+                try:
+                    rx_str = input(f"   X_robot (mm) Titik #{idx}: ").strip()
+                    ry_str = input(f"   Y_robot (mm) Titik #{idx}: ").strip()
+                    rx = float(rx_str)
+                    ry = float(ry_str)
+                    clicked_pixel_pts.append((px, py))
+                    robot_pts.append((rx, ry))
+                    print(f"✅ Titik #{idx} dicatat: Piksel=({px}, {py}) -> Robot=({rx:.1f}, {ry:.1f}) mm")
+
+                    if len(clicked_pixel_pts) == 4:
+                        print("\n🎯 Menghitung Matriks Homography 4-Titik...")
+                        ok_h = transformer.set_homography_points(clicked_pixel_pts, robot_pts)
+                        if ok_h:
+                            transformer.save_config(config_path)
+                            print(f"🎉 SUKSES! Matriks Kalibrasi tersimpan di '{config_path}'")
+                        else:
+                            print("❌ Gagal menghitung Homography. Periksa kembali input titik.")
+                except Exception as e:
+                    print(f"⚠️ Input dibatalkan / format salah: {e}")
+                finally:
+                    pending_pixel_click = None
 
             # Gambar titik-titik kalibrasi yang sudah diklik
             for i, (px, py) in enumerate(clicked_pixel_pts):

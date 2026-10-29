@@ -1,7 +1,7 @@
 @echo off
 title Sortir YOLO - OpenCV Vision AI
 echo ========================================================
-echo   SISTEM VISION AI SORTIR KOIN ^& TUTUP BOTOL (OPENCV)
+echo   SISTEM VISION AI SORTIR 3 KELAS (KOIN, TUTUP BOTOL, ^& CHARGER)
 echo ========================================================
 echo.
 
