@@ -78,3 +78,25 @@ def test_segment_charger_box_conveyor_hijau():
     assert abs(h - 260 / 720) < 0.05
 
 
+def test_segment_charger_box_memotong_pin_logam_fokus_kepala():
+    # Simulasi conveyor hijau dengan charger putih berlogo IT dan 2 pin colokan logam abu-abu
+    img = np.full((720, 1280, 3), (220, 220, 220), dtype=np.uint8)
+    img[120:580, :] = (100, 145, 110)
+    # 1. Bodi kepala charger putih (x: 520 s.d. 800 -> w=280, y: 220 s.d. 480 -> h=260)
+    cv2.rectangle(img, (520, 220), (800, 480), (245, 245, 245), -1)
+    # 2. Dua pin logam steker abu-abu gelap mencuat di sisi kiri (x: 440 s.d. 520 -> w=80)
+    cv2.rectangle(img, (440, 270), (520, 290), (120, 120, 120), -1)
+    cv2.rectangle(img, (440, 410), (520, 430), (120, 120, 120), -1)
+    
+    box = segment_charger_box(img)
+    assert box is not None
+    cx, cy, w, h = box
+    # Titik tengah harus fokus di bodi putih (cx sekitar 660, cy sekitar 350)
+    # Lebar kotak harus mencakup bodi kepala (w ~ 280), BUKAN total bersama pin (w ~ 360)
+    assert abs(cx - 660 / 1280) < 0.05
+    assert abs(cy - 350 / 720) < 0.05
+    assert abs(w - 280 / 1280) < 0.05
+    assert abs(h - 260 / 720) < 0.05
+
+
+

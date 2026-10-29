@@ -77,6 +77,61 @@ def box_from_background(
     return ((x + bw / 2) / sw, (y + bh / 2) / sh, bw / sw, bh / sh)
 
 
+def isolate_charger_head(
+    img_bgr: np.ndarray, full_x: int, full_y: int, full_bw: int, full_bh: int
+) -> tuple[int, int, int, int]:
+    """Memotong pin logam, konektor, dan leher steker sehingga bounding box hanya
+    membungkus bodi utama kepala charger yang memiliki logo IT (bidang datar hisap).
+    """
+    h, w = img_bgr.shape[:2]
+    crop = img_bgr[full_y : full_y + full_bh, full_x : full_x + full_bw]
+    ch, cw = crop.shape[:2]
+    if ch < 35 or cw < 35:
+        return full_x, full_y, full_bw, full_bh
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+
+    g_max = float(gray.max())
+    g_mean = float(gray.mean())
+    if g_max > 180:
+        th_val = max(155.0, g_mean + 0.25 * (g_max - g_mean))
+        mask = ((gray >= th_val) & (hsv[:, :, 1] < 65)).astype(np.uint8) * 255
+    else:
+        otsu_val, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        border_mean = (gray[0, :].mean() + gray[-1, :].mean() + gray[:, 0].mean() + gray[:, -1].mean()) / 4.0
+        if border_mean < otsu_val:
+            th_val = max(130, int(otsu_val))
+            mask = ((gray >= th_val) & (hsv[:, :, 1] < 70)).astype(np.uint8) * 255
+        else:
+            th_val = min(120, int(otsu_val))
+            mask = ((gray <= th_val)).astype(np.uint8) * 255
+
+    k_sz = max(11, min(ch, cw) // 12)
+    if k_sz % 2 == 0:
+        k_sz += 1
+    k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (k_sz, k_sz))
+    opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_rect)
+    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, k_rect)
+
+    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = (cw * ch) * 0.18
+    valid = []
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area >= min_area:
+            bx, by, bw, bh = cv2.boundingRect(c)
+            if bw >= cw * 0.35 and bh >= ch * 0.35:
+                valid.append((area, bx, by, bw, bh))
+
+    if valid:
+        valid.sort(key=lambda item: item[0], reverse=True)
+        _, bx, by, bw, bh = valid[0]
+        return full_x + bx, full_y + by, bw, bh
+
+    return full_x, full_y, full_bw, full_bh
+
+
 def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox | None:
     """Segmentasi universal kepala charger (Mendukung conveyor hijau kantor, alas hitam, maupun meja terang).
 
@@ -85,6 +140,7 @@ def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox 
       menghindari laptop, rel konveyor, dan pantulan meja di tepi frame.
     - Jika latar gelap (alas hitam): mencari objek terang (charger putih/warna).
     - Jika latar terang (meja/kertas putih): mencari objek gelap (charger hitam/abu-abu).
+    - Memotong pin logam dan steker via isolate_charger_head() agar fokus pada bodi berlogo IT.
     - Fallback ke model YOLO jika tersedia dan segmentasi CV terhalang.
     """
     h, w = img_bgr.shape[:2]
@@ -131,6 +187,7 @@ def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox 
         if valid:
             valid.sort(key=lambda item: item[0], reverse=True)
             _, x, y, bw, bh = valid[0]
+            x, y, bw, bh = isolate_charger_head(img_bgr, x, y, bw, bh)
             return ((x + bw / 2) / w, (y + bh / 2) / h, bw / w, bh / h)
 
         # Fallback ke model YOLO jika tersedia
@@ -143,7 +200,9 @@ def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox 
                     x1, y1, x2, y2 = b.xyxy[0].tolist()
                     bw, bh = (x2 - x1) / w, (y2 - y1) / h
                     if 0.15 < bw < 0.55 and 0.15 < bh < 0.55:
-                        return ((x1 + x2) / 2 / w, (y1 + y2) / 2 / h, bw, bh)
+                        fx, fy, fbw, fbh = int(x1), int(y1), int(x2 - x1), int(y2 - y1)
+                        hx, hy, hbw, hbh = isolate_charger_head(img_bgr, fx, fy, fbw, fbh)
+                        return ((hx + hbw / 2) / w, (hy + hbh / 2) / h, hbw / w, hbh / h)
             except Exception:
                 pass
         return None
@@ -187,6 +246,7 @@ def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox 
             if valid:
                 valid.sort(key=lambda item: item[0], reverse=True)
                 _, x, y, bw, bh = valid[0]
+                x, y, bw, bh = isolate_charger_head(img_bgr, x, y, bw, bh)
                 return ((x + bw / 2) / w, (y + bh / 2) / h, bw / w, bh / h)
 
     # Fallback Edge-based jika kontras warna latar vs benda rendah
@@ -204,6 +264,7 @@ def segment_charger_box(img_bgr: np.ndarray, yolo_model: Any = None) -> NormBox 
     if valid:
         valid.sort(key=lambda item: item[0], reverse=True)
         _, x, y, bw, bh = valid[0]
+        x, y, bw, bh = isolate_charger_head(img_bgr, x, y, bw, bh)
         return ((x + bw / 2) / w, (y + bh / 2) / h, bw / w, bh / h)
 
     return None
