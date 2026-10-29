@@ -546,7 +546,7 @@ opencv_3class/
     │   ├── detector.py              # Engine YOLOv8 + Smart Filters + Refine Vacuum Center
     │   └── utils.py                 # Anotasi visual HUD, Kalman filter, & Penstabil voting
     │
-    └── tests/                       # 49 skenario pengujian unit otomatis (100% lolos)
+    └── tests/                       # 56 skenario pengujian unit otomatis (100% lolos)
 ```
 
 ---
@@ -576,7 +576,7 @@ python sortir_otomatis.py --mode serial --port /dev/ttyUSB0 --baud 9600
 # 5. Kalibrasi Homography 4-Titik Meja Konveyor
 python kalibrasi_robot.py --source 0
 
-# 6. Menjalankan Seluruh Automated Unit Testing (49 Tests)
+# 6. Menjalankan Seluruh Automated Unit Testing (56 Tests)
 pytest -v
 ```
 
